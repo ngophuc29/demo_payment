@@ -1,0 +1,102 @@
+PS C:\Users\ngoph\Desktop\demo-payment> npm run zalopay
+
+> demo-payment@1.0.0 zalopay
+> nodemon zalo/server.js    
+
+[nodemon] 3.1.0
+[nodemon] to restart at any time, enter `rs`  
+[nodemon] watching path(s): *.*
+[nodemon] watching extensions: js,mjs,cjs,json
+[nodemon] starting `node zalo/server.js`      
+Server is listening at port :8888
+=== PAYMENT DEBUG ===
+MAC input: 2554|250905_750579|user123|50000|1757068898726|{"redirecturl":"https://www.facebook.com/ngphukk2903/"}|[]
+MAC output: 165085bfb031972a36f99d09be2f949330c51353ee2b294ecff5bb8f2d79aba9
+Order: {
+  app_id: '2554',
+  app_trans_id: '250905_750579',
+  app_user: 'user123',
+  app_time: 1757068898726,
+  item: '[]',
+  embed_data: '{"redirecturl":"https://www.facebook.com/ngphukk2903/"}',
+  amount: 50000,
+  callback_url: 'https://d46b2a98cf42.ngrok-free.app/callback',
+  description: 'Lazada - Payment for the order #750579',
+  bank_code: '',
+  mac: '165085bfb031972a36f99d09be2f949330c51353ee2b294ecff5bb8f2d79aba9'
+}
+====================
+Payment response: {
+  return_code: 1,
+  return_message: 'Giao dịch thành công',
+  sub_return_code: 1,
+  sub_return_message: 'Giao dịch thành công',
+  zp_trans_token: 'ACl1x1chyUtybuo1qv9vLQEA',
+  order_url: 'https://qcgateway.zalopay.vn/openinapp?order=eyJ6cHRyYW5zdG9rZW4iOiJBQ2wxeDFjaHlVdHlidW8xcXY5dkxRRUEiLCJhcHBpZCI6MjU1NH0=',
+  order_token: 'ACl1x1chyUtybuo1qv9vLQEA'
+}
+=== CHECK STATUS DEBUG ===
+MAC input: 2554|250905_750579|sdngKKJmqEMzvh5QQcdD2A9XBSKUNaYn
+MAC output: ac63e74829be64c39d88de2887a6b0472c86b3c990f937fe329fb41a23d21332
+==========================
+Check status response: {
+  return_code: 3,
+  return_message: 'Giao dịch chưa được thực hiện',
+  sub_return_code: 0,
+  sub_return_message: 'Giao dịch chưa được thực hiện',
+  is_processing: true,
+  amount: 0,
+  zp_trans_id: 0,
+  discount_amount: 0
+}
+Callback body: {
+  data: '{"app_id":2554,"app_trans_id":"250905_750579","app_time":1757068898726,"app_user":"user123","amount":50000,"embed_data":"{\\"redirecturl\\":\\"https://www.facebook.com/ngphukk2903/\\"}","item":"[]","zp_trans_id":250905000007398,"server_time":1757068958258,"channel":38,"merchant_user_id":"EaMk9krZRYNUK1jpvy3Bwxq_ZvlbjJyX_zwESsH8M_o","zp_user_id":"EaMk9krZRYNUK1jpvy3Bwxq_ZvlbjJyX_zwESsH8M_o","user_fee_amount":0,"discount_amount":0}',        
+  mac: 'a9922d7102914775a1857490156419c18624fbfd874bd84cf22e8d7c4639a53e',
+  type: 1
+}
+mac = a9922d7102914775a1857490156419c18624fbfd874bd84cf22e8d7c4639a53e
+update order's status = success where app_trans_id = 250905_750579
+=== CHECK STATUS DEBUG ===
+MAC input: 2554|250905_750579|sdngKKJmqEMzvh5QQcdD2A9XBSKUNaYn
+MAC output: ac63e74829be64c39d88de2887a6b0472c86b3c990f937fe329fb41a23d21332
+==========================
+Check status response: {
+  return_code: 1,
+  return_message: 'Giao dịch thành công',
+  sub_return_code: 1,
+  sub_return_message: 'Giao dịch thành công',
+  is_processing: false,
+  amount: 50000,
+  zp_trans_id: 250905000007398,
+  server_time: 1757068958258,
+  discount_amount: 0
+}
+=== REFUND DEBUG ===
+MAC input: 2554|250905000007398|50000|Khách hàng hủy đơn|1757068985171
+MAC output: 3cb94a3502f5641de0fcd19d0f523e175e2f441e52f09c07f6e3cbef712980e7
+Refund body: {
+  app_id: '2554',
+  m_refund_id: '250905_2554_249983',
+  zp_trans_id: '250905000007398',
+  amount: 50000,
+  timestamp: 1757068985171,
+  description: 'Khách hàng hủy đơn'
+}
+====================
+Refund response: {
+  return_code: 3,
+  return_message: 'Giao dịch đang refund!',
+  sub_return_code: 2,
+  sub_return_message: 'Giao dịch đang refund!',
+  refund_id: 250905000007400
+}
+=== QUERY REFUND DEBUG ===
+MAC input: 2554|250905_2554_249983|1757069030410
+MAC output: d7e4f2672a5c7948fa960028537bb9511d0cc97f1725baf99a6c0d30b4bd2055
+==========================
+Query refund response: {
+  return_code: 1,
+  return_message: 'Giao dịch thành công!',
+  sub_return_code: 1,
+  sub_return_message: 'Giao dịch thành công!'
+}
