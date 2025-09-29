@@ -1,0 +1,1004 @@
+[
+  {
+    "name": "Thành phố Hà Nội",
+    "code": 1,
+    "division_type": "tỉnh",
+    "codename": "thanh_pho_ha_noi",
+    "phone_code": 24,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Mỹ Đình", "address": "Số 20 đường Phạm Hùng, P. Mỹ Đình, Q. Nam Từ Liêm", "phone": "(04) 37685549" },
+      { "name": "Bến xe Giáp Bát", "address": "Km6 đường Giải phóng, Q. Hoàng Mai, tp. Hà Nội", "phone": "(04) 38641467" },
+      { "name": "Bến xe Nước Ngầm", "address": "Km8 đường Giải Phóng, Q. Hoàng Mai, TP. Hà Nội", "phone": "(04) 38612158" },
+      { "name": "Bến xe Gia Lâm", "address": "Số 9, đường Ngô Gia Khảm, Quận Long Biên, TP. Hà Nội", "phone": "(04) 38271529" },
+      { "name": "Bến xe Yên Nghĩa", "address": "QL6, Phú Lâm, Hà Đông, Hà Nội", "phone": null },
+      { "name": "Bến xe Nam Thăng Long", "address": "Showroom Ô Tô Trung Sơn (Đối Diện 315 Phạm Văn Đồng)", "phone": null },
+      { "name": "Bến xe Sơn Tây", "address": "Phường Phú Thịnh, thị xã Sơn Tây, Hà Nội", "phone": "02433.832.577" }
+    ]
+  },
+  {
+    "name": "Tỉnh Hà Giang",
+    "code": 2,
+    "division_type": "tỉnh",
+    "codename": "tinh_ha_giang",
+    "phone_code": 219,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Hà Giang", "address": "Phương Thiện, Thành phố Hà Giang, Hà Giang", "phone": "02193.882.889" },
+      { "name": "Bến xe Yên Minh", "address": "119, Trần Hưng Đạo, TT Yên Minh, Hà Giang", "phone": null },
+      { "name": "Bến xe Bắc Quang", "address": "QL2, TT Việt Quang, Bắc Quang, tỉnh Hà Giang", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Cao Bằng",
+    "code": 4,
+    "division_type": "tỉnh",
+    "codename": "tinh_cao_bang",
+    "phone_code": 206,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Cao Bằng", "address": "M6H2+PQM, Khau Sả, tỉnh Cao Bằng", "phone": "02063.855.750" },
+      { "name": "Bến xe Tà Lùng", "address": "Phục Hoà, tỉnh Cao Bằng", "phone": "01653.098.267" }
+    ]
+  },
+  {
+    "name": "Tỉnh Bắc Kạn",
+    "code": 6,
+    "division_type": "tỉnh",
+    "codename": "tinh_bac_kan",
+    "phone_code": 209,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Bắc Kạn", "address": "Tổ 9b, đường Kon Tum, Phùng Chí Kiên, Bắc Kạn", "phone": "02093.872.673" },
+      { "name": "Bến Xe Ba Bể", "address": "QL 279, Chợ Rã, Ba Bể, Bắc Kạn", "phone": null },
+      { "name": "Bến Xe Khách Pác Nặm", "address": "Thôn Nà Cooc, Pộc Bố, Huyện Pác Nặm, Bắc Kạn", "phone": "02093.509.662" }
+    ]
+  },
+  {
+    "name": "Tỉnh Tuyên Quang",
+    "code": 8,
+    "division_type": "tỉnh",
+    "codename": "tinh_tuyen_quang",
+    "phone_code": 207,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Tuyên Quang", "address": "Tp Tuyên Quang – Tỉnh Tuyên Quang", "phone": "02073822664" },
+      { "name": "Bến xe Chiêm Hoá", "address": "H Chiêm Hoá, Tuyên Quang", "phone": null },
+      { "name": "Bến xe Sơn Dương", "address": "Tân Phú, TT Sơn Dương, Tuyên Quang", "phone": null },
+      { "name": "Bến xe Nà Hang", "address": "tổ 10, huyện Nà Hang, Tuyên Quang", "phone": null },
+      { "name": "Bến xe Hàm Yên", "address": "Tân Phú, TT Yên Tuyên, huyện Hàm Yên, Tuyên Quang", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Lào Cai",
+    "code": 10,
+    "division_type": "tỉnh",
+    "codename": "tinh_lao_cai",
+    "phone_code": 214,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Phố Mới", "address": "đường Minh Khai, Phố Mới, Lào Cai, TX.Lào Cai, Lào Cai", "phone": "02143.835.746" },
+      { "name": "Bến xe Bắc Hà", "address": "TT Bắc Hà- huyện Bắc Hà, Lào Cai", "phone": "02143.880.510" },
+      { "name": "Bến xe Phố Lu", "address": "TT Phố Lu, H. Bảo Thắng, Lào Cai", "phone": null },
+      { "name": "Bến xe Văn Bàn", "address": "TT Khánh Yên, H. Văn Bàn, Lào Cai", "phone": "02143.882.283" },
+      { "name": "Bến xe Sa Pa", "address": "Sa Pa, Lào Cai", "phone": "02143.887.733" },
+      { "name": "Bến xe Quảng Trường", "address": "Quảng Trường, Lào Cai", "phone": "02143.636.888" }
+    ]
+  },
+  {
+    "name": "Tỉnh Điện Biên",
+    "code": 11,
+    "division_type": "tỉnh",
+    "codename": "tinh_dien_bien",
+    "phone_code": 215,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe khách Điện Biên", "address": "Mường Thanh, Tp. Điện Biên Phủ, Điện Biên", "phone": "0230 3824 558" },
+      { "name": "Bến xe Mường Chà", "address": "H. Mường Chà, Tỉnh Điện Biên", "phone": "02153.842.176" },
+      { "name": "Bến xe Bản phủ", "address": "H Bản Phủ, tỉnh Điện Biên", "phone": "02153.821.221" },
+      { "name": "Bến xe Mường Lay", "address": "QL12, Na Lay, Mường Lay, tỉnh Điện Biên", "phone": "02153.852.182" },
+      { "name": "Bến xe Tuần Giáo", "address": "Khu phố 3- Huyện Tuần Giáo, Điện Biên", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Lai Châu",
+    "code": 12,
+    "division_type": "tỉnh",
+    "codename": "tinh_lai_chau",
+    "phone_code": 213,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách tỉnh Lai Châu", "address": "4D, Tổ 1, P. Tân Phong, Thị Xã Lai Châu, Lai Châu", "phone": "0231.3852.182" },
+      { "name": "Bến Xe Khách thị xã Lai Châu", "address": "Thị Xã Lai Châu, Lai Châu", "phone": null },
+      { "name": "Bến xe Than Uyên", "address": "Khu 10, TT Than Uyên, Lai Châu", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Sơn La",
+    "code": 14,
+    "division_type": "tỉnh",
+    "codename": "tinh_son_la",
+    "phone_code": 212,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Sơn La", "address": "Đường Lê Duẩn, Chiềng Sinh, TP. Sơn La", "phone": "02123.874391" },
+      { "name": "Bến xe Quỳnh Nhai", "address": "TT Phiêng Lanh, Huyện Quỳnh Nhai, tỉnh Sơn La", "phone": null },
+      { "name": "Bến xe huyện Yên Châu", "address": "TT Yên Châu, huyện Yên Châu, tỉnh Sơn La", "phone": null },
+      { "name": "Bến xe Mường La", "address": "Mường La- Sơn La", "phone": null },
+      { "name": "Bến xe Mộc Châu", "address": "Ngay trên đường Tô Hiệu, Thị trấn Mộc Châu, tỉnh Sơn La", "phone": "02123.866.592" }
+    ]
+  },
+  {
+    "name": "Tỉnh Yên Bái",
+    "code": 15,
+    "division_type": "tỉnh",
+    "codename": "tinh_yen_bai",
+    "phone_code": 216,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Yên Bái", "address": "Số 37, Phường Nguyễn Thái Học, Tp Yên Bái, Yên Bái", "phone": "02163.863.291" },
+      { "name": "Bến xe Nước Mát", "address": "Thôn Nước Mát, xã Âu Lâu, thành phố Yên Bái", "phone": "02163.511.081" },
+      { "name": "Bến xe Mậu A", "address": "Khu Phố 1, thị trấn Mậu A, Huyện Văn Yên, Yên Bái", "phone": "02163.834.192" },
+      { "name": "Bến xe Nghĩa Lộ", "address": "Thị xã Nghĩa Lộ, Yên Bái", "phone": null },
+      { "name": "Bến xe Lục Yên", "address": "Khu 3, Yên Thế, Huyện Lục Yên, Yên Bái", "phone": "02163.845.449" }
+    ]
+  },
+  {
+    "name": "Tỉnh Hoà Bình",
+    "code": 17,
+    "division_type": "tỉnh",
+    "codename": "tinh_hoa_binh",
+    "phone_code": 218,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Trung Tâm Hòa Bình", "address": "Đường Trần Hưng Đạo, Hòa Bình, Tp. Hòa Bình, Hòa Bình", "phone": "0904.648.999" }
+    ]
+  },
+  {
+    "name": "Tỉnh Thái Nguyên",
+    "code": 19,
+    "division_type": "tỉnh",
+    "codename": "tinh_thai_nguyen",
+    "phone_code": 208,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe khách trung tâm TP Thái Nguyên (Bến xe Thái Nguyên)", "address": "Ngõ 398 đường Thống Nhất, Đồng Quang, TP. Thái Nguyên", "phone": "02083.855.685" },
+      { "name": "Bến xe Phú Bình", "address": "Xã Bình Yên, H. Định Hoá, Thái Nguyên", "phone": "02083.867.955" },
+      { "name": "Bến xe Phổ Yên", "address": "QL3, Ba Hàng, huyện Phổ Yên, Thái Nguyên", "phone": null },
+      { "name": "Bến xe Đại Từ", "address": "QL37, Huyện Đại Từ, Thái Nguyên", "phone": "02083.824.341" },
+      { "name": "Bến xe Đồng Quang", "address": "Phường Quang Trung, Tp Thái Nguyên", "phone": "02083.840.444" }
+    ]
+  },
+  {
+    "name": "Tỉnh Lạng Sơn",
+    "code": 20,
+    "division_type": "tỉnh",
+    "codename": "tinh_lang_son",
+    "phone_code": 205,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Bắc Lạng Sơn", "address": "AH1, Hợp Thành, Cao Lộc, Lạng Sơn", "phone": "0989.883.789" },
+      { "name": "Bến xe Lạng Sơn", "address": "Số 28 đường Ngô Quyền, Lạng Sơn", "phone": "02053.873.283" },
+      { "name": "Bến xe Hữu Lũng", "address": "Khu An Ninh, H. Hữu Lũng, Tỉnh Lạng Sơn", "phone": "02053.825.029" },
+      { "name": "Bến xe Hữu Nghị Quan", "address": "huyện Cao Lộc, tỉnh Lạng Sơn", "phone": null },
+      { "name": "Bến xe Tân Thanh", "address": "Tân Thanh, Văn Lãng, Lạng Sơn", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Quảng Ninh",
+    "code": 22,
+    "division_type": "tỉnh",
+    "codename": "tinh_quang_ninh",
+    "phone_code": 203,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe khách Bãi Cháy", "address": "QL279, Khu 1, phường Giếng Đáy, Tp Hạ Long, Quảng Ninh", "phone": "02033.846.410" },
+      { "name": "Bến xe khách Hòn Gai", "address": "Đường Lê Thánh Tông, Hồng Gai, Thành phố Hạ Long, Quảng Ninh", "phone": null },
+      { "name": "Bến xe khách Cẩm Phả", "address": "Đường Lê Thanh Nghị, Cẩm Phìn, Thành phố Hạ Long, Quảng Ninh", "phone": null },
+      { "name": "Bến Xe Khách Uông Bí", "address": "Khu phố 3 Trần Nhân Tông, phường Yên Thanh, Uông Bí, Quảng Ninh", "phone": "096 550 70 76" },
+      { "name": "Bến xe khách Hoành Bồ", "address": "QL279, Thị trấn Trới, Hoành Bồ, Quảng Ninh", "phone": null },
+      { "name": "Bến Xe Khách Đông Triều", "address": "Số 239 đường Nguyễn Bình, thị trấn Đông Triều, tx. Đông Triều, Quảng Ninh", "phone": "02033.870.585" },
+      { "name": "Bến Xe Khách Quảng Yên", "address": "2 đường Trần Khánh Dư, thị trấn Quảng Yên, Yên Hưng, Quảng Ninh", "phone": "02033.875.226" },
+      { "name": "Bến xe Cái Rồng Vân Đồn", "address": "ĐT334, Hạ Long, Vân Đồn, Quảng Ninh", "phone": null },
+      { "name": "Bến xe Cửa Ông", "address": "48 đường Lý Thường Kiệt, phường Cửa Ông, Cẩm Phả, Quảng Ninh", "phone": "02033.865.618" },
+      { "name": "Bến xe Tiên Yên", "address": "Đường Lý Thường Kiệt, thị trấn Tiên Yên, Tiên Yên, Quảng Ninh", "phone": null },
+      { "name": "Bến xe Vân Đồn", "address": "Khu số 7, TT Cái Rồng, Vân Đồn", "phone": null },
+      { "name": "Bến xe Mông Dương", "address": "QL18, Mông Dương, Huyện Cẩm Phả, Quảng Ninh", "phone": "0914261655" }
+    ]
+  },
+  {
+    "name": "Tỉnh Bắc Giang",
+    "code": 24,
+    "division_type": "tỉnh",
+    "codename": "tinh_bac_giang",
+    "phone_code": 204,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Bắc Giang", "address": "197, đường Xương Giang, phường Thọ Xương, tỉnh Bắc Giang", "phone": "02043854786" },
+      { "name": "Bến xe Lục Ngạn", "address": "Xã Nghĩa Hồ, H Lục Ngạn, tỉnh Bắc Giang", "phone": "02043854425" },
+      { "name": "Bến xe Cầu Gỗ", "address": "Cầu gỗ, Yên Thế, tỉnh Bắc Giang", "phone": "02043854245" },
+      { "name": "Bến xe Hiệp Hoà", "address": "Khu 4, Huyện Hiệp Hoà, tỉnh Bắc Giang", "phone": "02043873441" },
+      { "name": "Bến xe Sơn Động", "address": "Xã An Lập, H. Sơn Động, tỉnh Bắc Giang", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Phú Thọ",
+    "code": 25,
+    "division_type": "tỉnh",
+    "codename": "tinh_phu_tho",
+    "phone_code": 210,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Phú Thọ", "address": "Đường Bạch Đằng, Phường Phong Châu, Phú Thọ", "phone": "0210.3820.265" },
+      { "name": "Bến xe Thanh Ba", "address": "Tỉnh lộ 311, Huyện Thanh Ba, Phú Thọ", "phone": "0210.366.1108" },
+      { "name": "Bến xe Cẩm Khê", "address": "Khu 4, thị trấn song Thao, Cẩm Khê, Phú Thọ", "phone": null },
+      { "name": "Bến xe Yên Lập", "address": "Huyện yên Lập, Phú Thọ", "phone": "02103.870.170" },
+      { "name": "Bến xe Thanh Sơn", "address": "QL32. TT Thanh Sơn, Phú Thọ", "phone": null },
+      { "name": "Bến xe Hạ Hoà", "address": "Tỉnh lộ 314, TT Hạ Hoà, Huyện Hạ Hoà, Phú Thọ", "phone": "02103.883.053" },
+      { "name": "Bến xe Việt Trì", "address": "1506 đường Hùng Vương, TP VIỆT Trì, Phú Thọ", "phone": "02103.846.477" }
+    ]
+  },
+  {
+    "name": "Tỉnh Vĩnh Phúc",
+    "code": 26,
+    "division_type": "tỉnh",
+    "codename": "tinh_vinh_phuc",
+    "phone_code": 211,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Vĩnh Yên", "address": "P. Khai Quang, Tp. Vĩnh Yên, Vĩnh Phúc", "phone": "02113.841.665" },
+      { "name": "Bến Xe Khách Thị Trấn Vĩnh Tường", "address": "ĐT304, thị trấn Vĩnh Tường, huyện Vĩnh Tường, Vĩnh Phúc", "phone": "02113.819.371" },
+      { "name": "Bến xe Phúc Yên", "address": "Đường Trần Hưng Đạo, P. Hùng Vương, Phúc Yên, Vĩnh Phúc", "phone": "0328.779.747" },
+      { "name": "Bến xe thị trấn Lập Thạch", "address": "ĐT307, thị trấn Lập Thạch, huyện Lập Thạch, Vĩnh Phúc", "phone": "02113.830.750" },
+      { "name": "Bến xe Vĩnh Tường", "address": "QL2, Tân Tiến, Vĩnh Tường, Vĩnh Phúc", "phone": null },
+      { "name": "Bến Xe Khách Tam Đảo", "address": "ĐT302, Hồ Sơn, Huyện Tam Đảo, Vĩnh Phúc", "phone": "098 584 84 48" }
+    ]
+  },
+  {
+    "name": "Tỉnh Bắc Ninh",
+    "code": 27,
+    "division_type": "tỉnh",
+    "codename": "tinh_bac_ninh",
+    "phone_code": 222,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Gia Bình", "address": "TT Gia Bình, H. Gia Bình, tỉnh Bắc Ninh", "phone": "02223556986" },
+      { "name": "Bến xe Bắc Ninh", "address": "Nguyễn Du, p. Ninh Xá, Bắc Ninh", "phone": "02223821394" }
+    ]
+  },
+  {
+    "name": "Tỉnh Hải Dương",
+    "code": 30,
+    "division_type": "tỉnh",
+    "codename": "tinh_hai_duong",
+    "phone_code": 220,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Hải Dương", "address": "Đường Hồng Quang, Tp Hải Dương", "phone": "0973222179 0962929355" },
+      { "name": "Bến xe Bến Trại", "address": "Xã Tiền Phong, H. Thanh Miện, Tp. Hải Dương", "phone": null },
+      { "name": "Bến xe Sao Đỏ", "address": "Sao Đỏ, huyện Chí Linh, Hải Dương", "phone": null },
+      { "name": "Bến xe Nam Sách", "address": "Xã An Lâm, Nam Sách, Hải Dương", "phone": null },
+      { "name": "Bến xe kinh Môn", "address": "huyện Kinh Môn, Hải Dương", "phone": null },
+      { "name": "Bến xe Ninh Giang", "address": "TT Ninh Giang, Ninh Giang, Hải Dương", "phone": null },
+      { "name": "Bến xe Hải Tân", "address": "Đường Lê Thanh Nghị, Tp Hải Dương", "phone": null }
+    ]
+  },
+  {
+    "name": "Thành phố Hải Phòng",
+    "code": 31,
+    "division_type": "tỉnh",
+    "codename": "thanh_pho_hai_phong",
+    "phone_code": 225,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe khách Niệm Nghĩa", "address": "Đường Trần Nguyên Hãn, Niệm Nghĩa, TP. Hải Phòng", "phone": null },
+      { "name": "Bến xe Cầu Rào", "address": "Cầu Rào, Đằng Giang, Ngô Quyền, Hải Phòng", "phone": null },
+      { "name": "Bến xe Lạc Long", "address": "Tam Bạc, Minh Khai, Hải Phòng", "phone": null },
+      { "name": "Bến xe khách Vĩnh Niệm", "address": "RMCF+XRG, Vĩnh Niệm, Lê Chân, Hải Phòng", "phone": null },
+      { "name": "Bến Xe Tam Bạc", "address": "3 Tam Bạc, Minh Khai, Hồng Bàng, Hải Phòng", "phone": null },
+      { "name": "Bến xe khách Thượng Lý", "address": "52 Đường Hà Nội, Sở Dầu, Hồng Bàng, Hải Phòng", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Hưng Yên",
+    "code": 33,
+    "division_type": "tỉnh",
+    "codename": "tinh_hung_yen",
+    "phone_code": 221,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe khách Hưng Yên", "address": "QL 39, P. Hiến Nam, Tp. Hưng Yên, Hưng Yên", "phone": "02213511511" },
+      { "name": "Bến xe La Tiến", "address": "Nguyên Hoà, Huyện Phù Cừ, tỉnh Hưng Yên", "phone": null },
+      { "name": "Bến xe Ân Thi", "address": "Bùi Thị Cúc, Ân Thi, Hưng Yên", "phone": null },
+      { "name": "Bến xe Triều Dương", "address": "Tiên Lữ, Hưng Yên", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Thái Bình",
+    "code": 34,
+    "division_type": "tỉnh",
+    "codename": "tinh_thai_binh",
+    "phone_code": 227,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe khách Thái Bình", "address": "ĐT223, Phường Bồ Xyên, Thành phố Thái Bình, tỉnh Thái Bình", "phone": "1900 8198" },
+      { "name": "Bến xe Bồng Tiên", "address": "Vũ Tiến, Vũ Thư, Thái Bình", "phone": null },
+      { "name": "Bến xe Chợ Lục", "address": "Thái Xuyên, Thái Thuỵ, Thái Bình", "phone": null },
+      { "name": "Bến xe Hưng Hà", "address": "Huyện Hưng Hà, Thái Bình", "phone": null },
+      { "name": "Bến xe Đông Hưng", "address": "Km10 + 200, QL 10, Đông Hợp, Đông Hưng, Thái Bình", "phone": "02773.851.311" },
+      { "name": "Bến xe Tiền Hải", "address": "355 phố Hùng Thắng, Tiền Hải, Thái Bình", "phone": null },
+      { "name": "Bến xe Hưng Hoà", "address": "TT Hưng Hoà, Hưng Hà, Thái Bình", "phone": null },
+      { "name": "Bến xe Diêm Điền I", "address": "TT Diêm Điền, Huyện Thái Thuỵ, Thái Bình", "phone": null },
+      { "name": "Bến xe Quỳnh Côi", "address": "217, thị trấn Quỳnh Côi, huyện Quỳnh Phụ, Thái Bình", "phone": "0913.136.999" },
+      { "name": "Bến xe Kiến Xương", "address": "TT Thanh Nê, huyện Kiến Xương, Thái Bình", "phone": "02773.842.177" },
+      { "name": "Bến xe Nam Hải", "address": "Huyện Tiền Hải, Thái Bình", "phone": "0936.201.855" },
+      { "name": "Bến xe Thái Thuỵ", "address": "Thái Thuỵ, Thái Bình", "phone": "02773.853.766" }
+    ]
+  },
+  {
+    "name": "Tỉnh Hà Nam",
+    "code": 35,
+    "division_type": "tỉnh",
+    "codename": "tinh_ha_nam",
+    "phone_code": 226,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Phủ Lý", "address": "Đường Đinh Tiên Hoàng, Tp. Phủ Lý, Hà Nam", "phone": "02663.854.444" },
+      { "name": "Bến xe Hòa Mạc", "address": "QL 38, Trắc Vân, huyện Duy Tiên, tỉnh Hà Nam", "phone": null },
+      { "name": "Bến xe Trần Phương", "address": "G5H4+P89, Xóm 6, H. Lý Nhân, Hà Nam", "phone": "091 227 09 26" },
+      { "name": "Bến xe Vĩnh Trụ", "address": "TT. Vĩnh Trụ, Huyện Lý Nhân, Hà Nam", "phone": "02663.611.100" }
+    ]
+  },
+  {
+    "name": "Tỉnh Nam Định",
+    "code": 36,
+    "division_type": "tỉnh",
+    "codename": "tinh_nam_dinh",
+    "phone_code": 228,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Nam Định", "address": "Xã Lộc Hòa -Tỉnh Nam Định", "phone": "02283.849.777" },
+      { "name": "Bến xe Quỹ Nhất", "address": "Nghĩa Hoà, huyện Nghĩa Hưng, Tỉnh Nam Định", "phone": "02283.872.265" },
+      { "name": "Bến xe Đò Quan", "address": "Tỉnh lộ 490C, p. Cửa Nam, Nam Định", "phone": "02283.858.320" },
+      { "name": "Bến xe Trực Ninh", "address": "TT Cổ Lễ, H. Trực Ninh, Nam Định", "phone": null },
+      { "name": "Bến xe Nghĩa Hưng", "address": "TT LiỄU Đề, H. Ngĩa Hưng, Nam Định", "phone": null },
+      { "name": "Bến xe Hải Hậu", "address": "TT Yên Định, H. Hải Hậu, Nam Định", "phone": null },
+      { "name": "Bến xe Yên Định", "address": "QL21B, TT Yên Định, H. Hải Hậu, Nam Định", "phone": "02883.877.485" },
+      { "name": "Bến xe Giao Thuỷ", "address": "Km16+350, tỉnh lộ 489, TT Ngô Đồng, H Giao Thuỷ", "phone": "02288.680.999" }
+    ]
+  },
+  {
+    "name": "Tỉnh Ninh Bình",
+    "code": 37,
+    "division_type": "tỉnh",
+    "codename": "tinh_ninh_binh",
+    "phone_code": 229,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe khách Ninh Bình", "address": "207, Lê Đại Hành, Vân Gia, Phường Thanh Bình, Tp. Ninh Bình, Ninh Bình", "phone": "02293.871.069" },
+      { "name": "Bến xe Nho Quan", "address": "Tỉnh lộ 477, TT Nho Quan, Ninh Bình", "phone": "0912353976" },
+      { "name": "Bến xe Kim Sơn", "address": "TT Phát Diệm, Kim Sơn, Ninh Bình", "phone": "02293.862.052" },
+      { "name": "Bến xe Tam Điệp", "address": "Nút giao QL12b + QL1A, tt Tam Điệp, Ninh Bình", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Thanh Hóa",
+    "code": 38,
+    "division_type": "tỉnh",
+    "codename": "tinh_thanh_hoa",
+    "phone_code": 237,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Phía Nam Thanh Hóa", "address": "Số 690 đường Quang Trung, Phường Tân Sơn, Tp Thanh Hoá", "phone": "0237 3950 264" },
+      { "name": "Bến xe Phía Bắc Thanh Hóa", "address": "Số 1A đường Nguyễn Chí Thanh, Phường Nam Ngạn, TP. Thanh Hóa", "phone": "02373.852.102" },
+      { "name": "Bến xe phía Tây", "address": "Đường Nguyễn Trãi, Phường Điện Biên, Tp Thanh Hóa", "phone": "02373.852.642" },
+      { "name": "Bến xe khách Sầm Sơn", "address": "Số 275 đường Lê Lợi, Sơn Thắng, Huyện Sầm Sơn, Thanh Hóa", "phone": "0912.085.560" },
+      { "name": "Bến Xe Khách Hoằng Hóa", "address": "TT. Bút Sơn, H. Hoằng Hóa, Thanh Hóa", "phone": "02373.645.692" },
+      { "name": "Bến xe Nghi Sơn", "address": "Xã nghi Sơn, H. Tĩnh Gia, Thanh Hóa", "phone": "02373.862.480" },
+      { "name": "Bến xe huyện Cẩm Yên", "address": "huyện Cẩm Yên, Thanh Hóa", "phone": "0964.902.616" },
+      { "name": "Bến xe Sô Tô", "address": "huyện Quảng Xương, Thanh Hóa", "phone": "0912.165.151" },
+      { "name": "Bến xe Cẩm Thuỷ", "address": "Cẩm Sơn, huyện Cẩm Thuỷ, Thanh Hóa", "phone": null },
+      { "name": "Bến xe Vĩnh Lộc", "address": "QL217, Vĩnh Tiến, huyện Vĩnh Lộc, Thanh Hóa", "phone": "02373.520.799" },
+      { "name": "Bến xe Nga Sơn", "address": "QL10, Huyện Nga Sơn, Thanh Hóa", "phone": "02373.244.825" },
+      { "name": "Bến xe Nông Cống", "address": "Nam Giang, huyện Nông Cống, Thanh Hóa", "phone": "02373.680.554" },
+      { "name": "Bến xe TT Thọ Xuân", "address": "TT Thọ Xuân, huyện Thọ Xuân, Thanh Hóa", "phone": "02373.884.414" },
+      { "name": "Bến xe Yên Mỹ", "address": "TT Yên Mỹ, Nông Cống, Thanh Hóa", "phone": null },
+      { "name": "Bến xe Như Thanh", "address": "TT Như Thanh, Huyện Như Thanh, Thanh Hóa", "phone": null },
+      { "name": "Bến xe Ngọc Lặc", "address": "thị trấn Ngọc Lặc, huyện Ngọc Lặc, Thanh Hóa", "phone": null },
+      { "name": "Bến xe Sim", "address": "Xã Hợp Thành, huyện Triệu Sơn, Thanh Hóa", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Nghệ An",
+    "code": 40,
+    "division_type": "tỉnh",
+    "codename": "tinh_nghe_an",
+    "phone_code": 238,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Bắc Vinh", "address": "Xóm 1, xã Nghi Kim, Thành phố Vinh, Nghệ An", "phone": null },
+      { "name": "Bến Xe Khách Thị Xã Cửa Lò", "address": "Số 35 đường Sào Nam, Thu Thuỷ, Cửa Lò, Nghệ An", "phone": "02383.949.200" },
+      { "name": "Bến xe chợ vinh", "address": "Hồ Xuân Hương, Vinh Tân, Tp. Vinh, Nghệ An", "phone": null },
+      { "name": "Bến xe Phía Đông TP. Vinh", "address": "QL46, Nghi Phú, Thành phố Vinh, Nghệ An", "phone": "02383.546.666" },
+      { "name": "Bến xe Đô Lương", "address": "Yên Sơn, Đô Lương, Nghệ An", "phone": "02383.713.897" },
+      { "name": "Bến Xe Miền Trung", "address": "Km20, Đường tránh Vinh, P. Vinh Tân, Vinh, Nghệ An", "phone": "02383.834.834" },
+      { "name": "Bến xe huyện Con Cuông", "address": "Tại QL7, Con Cuong, Con Cuông, Nghệ An", "phone": null },
+      { "name": "Bến Xe Thanh Chương", "address": "QL 46, Thanh Lĩnh, Thanh Chương, Nghệ An", "phone": "02383.823.429" },
+      { "name": "Bến Xe Nghĩa Đàn", "address": "Số 226 đường Trần Hưng Đạo, Hòa Hiếu, TX. Thái Hòa, Nghệ An", "phone": "02383.813.325" },
+      { "name": "Bến xe Quế Phong", "address": "JW8G+54X, Kim Sơn, huyện Quế Phong, Nghệ An", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Hà Tĩnh",
+    "code": 42,
+    "division_type": "tỉnh",
+    "codename": "tinh_ha_tinh",
+    "phone_code": 239,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Hà Tĩnh", "address": "Số 13 Võ Liêm Sơn, Bắc Hà, Tp. Hà Tĩnh, tỉnh Hà Tĩnh", "phone": "0293.898988" },
+      { "name": "Bến xe Hồng Lĩnh", "address": "TX. Hồng Lĩnh Tp. Hà Tĩnh, tỉnh Hà Tĩnh", "phone": "02393.570.050" },
+      { "name": "Bến xe Cẩm Xuyên", "address": "Cẩm Xuyên, tỉnh Hà Tĩnh", "phone": "02393.861.698" },
+      { "name": "Bến xe Tây Sơn Hà Tĩnh", "address": "Km 84 +450, QL8, H Tây Sơn, Tỉnh Hà Tĩnh", "phone": null },
+      { "name": "Bến xe Hương Khê", "address": "Hương Khê- Hà Tĩnh", "phone": null },
+      { "name": "Bến xe Đức Thọ", "address": "QL8A, Đức Yên, Đức Thọ, Hà Tĩnh", "phone": null },
+      { "name": "Bến xe Kỳ Anh", "address": "QL1A, TT Kỳ Anh, Tỉnh Hà Tĩnh", "phone": null },
+      { "name": "Bến xe Hương Sơn", "address": "QL8A, tt Phổ Châu, H. Hương Sơn, Hà Tĩnh", "phone": "02393.875.053" }
+    ]
+  },
+  {
+    "name": "Tỉnh Quảng Bình",
+    "code": 44,
+    "division_type": "tỉnh",
+    "codename": "tinh_quang_binh",
+    "phone_code": 232,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Đồng Hới", "address": "Đường Nguyễn Hữu Cảnh, P.Hải Thịnh, Thành phố Đồng Hới, Quảng Bình", "phone": "02323822.150" },
+      { "name": "Bến xe Khách Ba Đồn", "address": "TX, 69 Hùng Vương, Ba Đồn, Quảng Trạch, Quảng Bình", "phone": "02323.514.190" },
+      { "name": "Bến xe Lệ Thủy", "address": "đường Trần Hưng Đạo, P2, Liên Thuỷ, Lệ Thủy, Quảng Bình", "phone": "02323.882.380" },
+      { "name": "Bến Xe Quy Đạt", "address": "QL12A, Yên Hoá, Minh Hóa, Quảng Bình", "phone": null },
+      { "name": "Bến xe Hoàn Lão", "address": "Tiểu khu 1, Hoàn Lão, Huyện Bố Trạch, Quảng Bình", "phone": "02323.572.480" }
+    ]
+  },
+  {
+    "name": "Tỉnh Quảng Trị",
+    "code": 45,
+    "division_type": "tỉnh",
+    "codename": "tinh_quang_tri",
+    "phone_code": 233,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Quảng Trị", "address": "Đường Trần Hưng Đạo, P. 2, TP. Đông Hà, Quảng Trị", "phone": "02333.862.073" },
+      { "name": "Bến xe liên tỉnh", "address": "P. 1, thị xã Quảng Trị", "phone": null },
+      { "name": "Bến xe Bắc Đông Hà", "address": "Đường Lê Duẩn, Đông Thanh, Đông Hà, Quảng Trị", "phone": "02333.524.330" },
+      { "name": "Bến xe Khe Sanh", "address": "Đường Ngô Sỹ Liên, Khe Sanh, Huyện Hướng Hoá", "phone": "02333.880.725" },
+      { "name": "Bến xe Hải Lăng", "address": "ĐƯờng Hùng Vương, Huyện Hải Lăng, Quảng Trị", "phone": "02333.873.032" },
+      { "name": "Bến xe Đông Hà", "address": "Số 68 đường Lê Duẩn, TX Đông Hà, Quảng Trị", "phone": "02333.851.488" }
+    ]
+  },
+  {
+    "name": "Thành phố Huế",
+    "code": 46,
+    "division_type": "tỉnh",
+    "codename": "thanh_pho_hue",
+    "phone_code": 234,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Phía Nam Huế, Việt Nam", "address": "Số 57 đường An Dương Vương, An Đông, Thành phố Huế, Thừa Thiên Huế", "phone": "02343.810.667" },
+      { "name": "Bến xe Thành Phố (Huế)", "address": "Số 6 đường Trần Hưng Đạo, Thành phố Huế, Thừa Thiên Huế", "phone": "02343.534.807" },
+      { "name": "Bến xe Thuận An", "address": "Số 12 Trấn Hải Thành, Thuân An, phú Vang, Thừa Thiên Huế", "phone": null },
+      { "name": "Bến xe phía Bắc thành phố", "address": "đường Lý Thái Tổ, Thành phố Huế, Thừa Thiên Huế", "phone": "02343.522.716" }
+    ]
+  },
+  {
+    "name": "Thành phố Đà Nẵng",
+    "code": 48,
+    "division_type": "tỉnh",
+    "codename": "thanh_pho_da_nang",
+    "phone_code": 236,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe trung tâm Đà Nẵng", "address": "201- Đường Tôn Đức Thắng, Phường Hòa Minh, Quận Liên Chiểu, Đà Nẵng", "phone": "02363-246-246" },
+      { "name": "Bến xe Đức Long", "address": "QL1A, xã Hoà Phước, huyện Hòa Vang, TP. Đà Nẵng", "phone": null },
+      { "name": "Bến xe Chùa Non Nước", "address": "Đông Hải, Hoà Hải, q. Ngũ Hành Sơn, Đà Nẵng", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Quảng Nam",
+    "code": 49,
+    "division_type": "tỉnh",
+    "codename": "tinh_quang_nam",
+    "phone_code": 235,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe khách Quảng Nam", "address": "QL1A, P.Tân Thạnh, Tp Tam Kỳ, Quảng Nam", "phone": null },
+      { "name": "Bến Xe Khách Thăng Bình", "address": "QL1A, thị trấn Hà Lam, Thăng Bình, Quảng Nam", "phone": "0913418339" },
+      { "name": "Bến xe Bắc Quảng Nam", "address": "Điện An, Điện Bàn, Quảng Nam", "phone": null },
+      { "name": "Bến xe Đại Lộc", "address": "QL14B, TT. ái Nghĩa, Đại Lộc, Quảng Nam", "phone": "0913.753095" },
+      { "name": "Bến Xe Khách Nam Phước", "address": "QL1A, Duy Phước, Duy Xuyên, Quảng Nam", "phone": "0235 3877 225" },
+      { "name": "Bến xe Tam Kỳ", "address": "QL1A, Phường Tân Thạnh, Tam Kỳ, Quảng Nam", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Quảng Ngãi",
+    "code": 51,
+    "division_type": "tỉnh",
+    "codename": "tinh_quang_ngai",
+    "phone_code": 255,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Quảng Ngãi", "address": "26 Lê Thánh Tôn, P. Nghĩa Chánh Nam, tp. Quảng Ngãi", "phone": "02553822895" },
+      { "name": "Bến xe khách nhà xe Chín Nghĩa", "address": "Phường Nghĩa Chánh Nam, Tp. Quảng Ngãi", "phone": "1628 827768" },
+      { "name": "Bến xe Bắc Quảng Ngãi", "address": "Thôn liên hiệp 2, TT Sơn Tịnh, huyện Sơn Tịnh, Quảng Ngãi", "phone": "02553.841.187" },
+      { "name": "Bến xe Đức Phổ", "address": "Khối 5, TT Đức Phổ, huyện Đức Phổ, Quảng Ngãi", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Bình Định",
+    "code": 52,
+    "division_type": "tỉnh",
+    "codename": "tinh_binh_dinh",
+    "phone_code": 256,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe khách Phù Mỹ", "address": "1A, Thị trấn Phù Mỹ, Huyện Phù Mỹ, Bình Định", "phone": null },
+      { "name": "Bến xe khách Quy Nhơn", "address": "71 Tây Sơn, Thành phố Qui Nhơn, tỉnh Bình Định", "phone": "02563.746.647" },
+      { "name": "Bến xe Bồng Sơn", "address": "Bồng Sơn 1A, Thị trấn Bồng Sơn, Huyện Hoài Nhơn, BĐ", "phone": "0778.820.755" },
+      { "name": "Bến xe Tây Sơn", "address": "QL19, TT Phú Phong, Tây Sơn, Bình Định", "phone": "02562.201.468" },
+      { "name": "Bến xe khách Nhơn Phú", "address": "Hùng Vương, Nhơn Phú, Tp. Qui Nhơn, Bình Định", "phone": null },
+      { "name": "Bến xe Phù Cát", "address": "QL 1A, Cát Trinh, Phù Cát, Tỉnh Bình Định", "phone": null },
+      { "name": "Bến xe Tam Quan", "address": "Thị trấn Tam Quan, Huyện Hoài Nhơn, Bình Định", "phone": "02563.865.821" }
+    ]
+  },
+  {
+    "name": "Tỉnh Phú Yên",
+    "code": 54,
+    "division_type": "tỉnh",
+    "codename": "tinh_phu_yen",
+    "phone_code": 257,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Phú Yên", "address": "Số 227 đường Nguyễn Tất Thành, P.8, Tuy Hòa, Phú Yên", "phone": "02573.820.361" },
+      { "name": "Bến xe Sông Hinh", "address": "Khu 4, TT Hai Riêng, Sông Hinh, Phú Yên", "phone": null },
+      { "name": "Bến xe Nam Tuy Hoà", "address": "507 đường Nguyễn Văn Linh, P. Phú Lâm, TP. Tuy Hoà, Phú Yên", "phone": null },
+      { "name": "Bến xe Sơn Hoà", "address": "Phố Trung Hoà, TT Củng Sơn, H. Sơn Hoà, Phú Yên", "phone": null },
+      { "name": "Bến xe Hai Riêng", "address": "TT Hai Riêng, H. Sông Hinh, Phú Yên", "phone": "02573.858.733" },
+      { "name": "Bến xe La Hai", "address": "166 Trần Hưng Đạo, Phố Long Châu, TT La Hai, Đồng Xuân, Phú Yên", "phone": null },
+      { "name": "Bến xe Phú Lâm", "address": "đường Nguyễn Văn Linh, Phú Lâm, huyện Tuy Hoà, Phú Yên", "phone": "02573.852.288" }
+    ]
+  },
+  {
+    "name": "Tỉnh Khánh Hòa",
+    "code": 56,
+    "division_type": "tỉnh",
+    "codename": "tinh_khanh_hoa",
+    "phone_code": 258,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe phía Nam Nha Trang", "address": "Vĩnh Trung, Tp. Nha Trang, Khánh Hòa", "phone": null },
+      { "name": "Bến xe Diên Khánh", "address": "QL 1, Diên Khánh, Khánh Hòa", "phone": "02583.850.275" },
+      { "name": "Bến xe Cam Ranh", "address": "Đường Lê Duẩn, Cam Lộc, Tp. Cam Ranh, Khánh Hòa", "phone": null },
+      { "name": "Bến xe Phương Trang", "address": "Số 7 đường Hoàng Hoa Thám, Xương Huân, TP. Nha Trang, Khánh Hòa", "phone": null },
+      { "name": "Bến xe liên tỉnh Ninh Hòa", "address": "QL1A, Ninh Giang, Tx. Ninh Hòa, Khánh Hòa", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Ninh Thuận",
+    "code": 58,
+    "division_type": "tỉnh",
+    "codename": "tinh_ninh_thuan",
+    "phone_code": 259,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Tỉnh Ninh Thuận", "address": "52 QL1A, Đài Sơn, Phan Rang-Tháp Chàm, Ninh Thuận", "phone": "1900 088845" },
+      { "name": "Bến Xe Khách Trung Tâm Huyện Ninh Sơn", "address": "Khu Phố 8, TT Tân Sơn, H. Ninh Sơn, Ninh Thuận", "phone": "0683.953.666" },
+      { "name": "Bến Xe Như Quỳnh", "address": "Thanh Son, Phan Rang-Tháp Chàm, Ninh Thuận", "phone": "1900.088820" },
+      { "name": "Bến Xe Phan Rang", "address": "23 Thống Nhất, Đài Sơn, Phan Rang-Tháp Chàm, Ninh Thuận", "phone": "02593.822.9" }
+    ]
+  },
+  {
+    "name": "Tỉnh Bình Thuận",
+    "code": 60,
+    "division_type": "tỉnh",
+    "codename": "tinh_binh_thuan",
+    "phone_code": 252,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Bình Thuận", "address": "Từ Văn Tư, Phú Trinh, TX. Phan Thiết, tỉnh Bình Thuận", "phone": "02523832.386" },
+      { "name": "Bến xe Phan Thiết", "address": "Số 2 Từ Văn Tư, Phan Thiết, Bình Thuận", "phone": "02523.821.361" },
+      { "name": "Bến xe Mũi Né", "address": "Huỳnh Thúc Kháng, Mũi Né, Thành phố Phan Thiết, Bình Thuận", "phone": "06.2384.9676" },
+      { "name": "Bến xe Đức Linh", "address": "Đức Linh, Bình Thuận", "phone": "02523.882.163" },
+      { "name": "Bến xe Bắc Ruộng", "address": "X. Bắc ruộng, H. Tánh Linh, Bình Thuận", "phone": null },
+      { "name": "Bến xe Liên Hương", "address": "Nguyễn Thị Minh Khai, TT Liên Hương, H Tuy Phong, Bình Thuận", "phone": "02523. 950.950" },
+      { "name": "Bến xe Phan Rí Cửa", "address": "2 đường Lý Thường Kiệt, Phan Rí Cửa, H. Tuy Phong, T. Bình Thuận", "phone": "02523.854.032" },
+      { "name": "Bến xe La Gi", "address": "206, Đường Thống Nhất, Tân Thiện, TX. La Gi, Bình Thuận", "phone": "02523.821.361" },
+      { "name": "Bến xe Tánh Linh", "address": "Quốc lộ 55, đường Đức Thuận, phường Tánh Linh, tỉnh Bình Thuận", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Kon Tum",
+    "code": 62,
+    "division_type": "tỉnh",
+    "codename": "tinh_kon_tum",
+    "phone_code": 260,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Kon Tum", "address": "110 đường Trần Hưng Đạo, TX Kon Tum", "phone": "02603.864.443" },
+      { "name": "Bến xe Đăk Hà", "address": "Số 296 đường Hùng Vương, TT Đăk Hà, Kon Tum", "phone": "02603.926.999" },
+      { "name": "Bến xe Ngọc Hồi", "address": "Ngọc Hồi, Kon Tum", "phone": "02603.881.188" },
+      { "name": "Bến xe Sa Thầy", "address": "Sa Thầy, Kon Tum", "phone": "02603.918.555" }
+    ]
+  },
+  {
+    "name": "Tỉnh Gia Lai",
+    "code": 64,
+    "division_type": "tỉnh",
+    "codename": "tinh_gia_lai",
+    "phone_code": 269,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe khách Đức Long Gia Lai", "address": "43, Lý Nam Đế, Tp. Pleiku, tỉnh Gia Lai", "phone": "02693.829.021" },
+      { "name": "Bến Xe Chư Sê", "address": "Mười Bảy Tháng Ba, TT. Chư Sê, h. Chư Sê, Gia Lai", "phone": "02693.506.364" },
+      { "name": "Bến xe huyện Đắk Đoa", "address": "Số 426 đường Nguyễn Huệ, TT. Đăk Đoa, Đắk Đoa, Gia Lai", "phone": "02693.831.789" },
+      { "name": "Bến Xe mới Ayunpa", "address": "Số 313 đường Trần Hưng Đạo, Cheo Reo, Ayun Pa, Gia Lai", "phone": "02693.856.638" },
+      { "name": "Bến Xe Thị Xã An Khê", "address": "XMCG+89C, An Tân, An Khê, Gia Lai", "phone": "02693.837.878" },
+      { "name": "Bến Xe Khách Kbang (Mới)", "address": "Ngô Mây, TT. KBang, K’Bang, Gia Lai", "phone": "0269 3834 333" }
+    ]
+  },
+  {
+    "name": "Tỉnh Đắk Lắk",
+    "code": 66,
+    "division_type": "tỉnh",
+    "codename": "tinh_dak_lak",
+    "phone_code": 262,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Buôn Ma Thuột", "address": "71 Nguyễn Chí Thanh, P. Tân An, tp. Buôn Ma Thuột, Đắk Lắk", "phone": "02623.876.785" },
+      { "name": "Bến xe phía Nam Buôn Ma Thuột", "address": "Số 48/89 đường Phan Huy Chú, Khánh Xuân, Tp Buôn Ma Thuột, Đắk Lắk", "phone": "09784959565" },
+      { "name": "Bến Xe Huyện Krông Năng", "address": "Số 197 đường Nguyễn Tất Thành, Krông Năng, tỉnh Đắk Lắk", "phone": "02623.675.653" },
+      { "name": "Bến xe Buôn Hồ", "address": "Km33, QL14, P. An Bình, Tx. Buôn Hồ, tỉnh Đắk Lắk", "phone": "02623.870.965" },
+      { "name": "Bến Xe Khách Huyện Ea Hleo", "address": "đường Giải Phóng, thị trấn. Ea Drăng, Ea H’Leo, Đắk Lắk", "phone": "02623.777.769" },
+      { "name": "Bến xe Krông Bông", "address": "TL12, TT. Krông Kmar, Krông Bông, Đắk Lắk", "phone": "0973. 469.469" },
+      { "name": "Bến Xe Eakar", "address": "số 6, đường Nguyễn Tất Thành, Ea Kar, Đắk Lắk", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Đắk Nông",
+    "code": 67,
+    "division_type": "tỉnh",
+    "codename": "tinh_dak_nong",
+    "phone_code": 261,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Gia Nghĩa Liên Tỉnh Đắk Nông", "address": "XMG2+Q6P, Phường Nghĩa Phú, Gia Nghĩa, Đăk Nông", "phone": null },
+      { "name": "Bến xe khách huyện Krông Nô", "address": "Đắk Mâm, Krông Nô, tỉnh Đăk Nông", "phone": "02613.584.484" },
+      { "name": "Bến xe huyện Đăk Song", "address": "7J66+WJR, Thị trấn Đức An, Đắk Song, Đăk Nông", "phone": null },
+      { "name": "Bến xe Đắk Mil", "address": "Đắk Mil, Đăk Nông", "phone": null },
+      { "name": "Bến xe khách huyện Đắk Rlấp", "address": "đường Lê Hữu Trác, Thị trấn Kiến Đức, Đắk R’Lấp, Đăk Nông", "phone": null },
+      { "name": "Bến Xe Khách Quảng Khê", "address": "VRX8+3FM, Thôn 6, Đắk Glong, Đăk Nông", "phone": "02613.545.015" }
+    ]
+  },
+  {
+    "name": "Tỉnh Lâm Đồng",
+    "code": 68,
+    "division_type": "tỉnh",
+    "codename": "tinh_lam_dong",
+    "phone_code": 263,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe khách liên tỉnh Đức Long Bảo Lộc", "address": "Km125+800, 20, Trần Phú, P. Lộc Sơn, Tp. Bảo Lộc, Lâm Đồng", "phone": "02633.731.731" },
+      { "name": "Bến xe Đức Trọng", "address": "số 735 QL20, Liên Nghĩa, Đức Trọng, Lâm Đồng", "phone": "02633.650.119" },
+      { "name": "Bến xe Liên tỉnh Đà Lạt (Bến xe Đà Lạt)", "address": "Số 1 Đường Tô Hiến Thành, P.3, TP. Đà Lạt, Lâm Đồng", "phone": "523.777" },
+      { "name": "Bến Xe Di Linh", "address": "681 đường Hùng Vương, H. Di Linh, Lâm Đồng", "phone": "02633.870.412" },
+      { "name": "Bến xe Tân Hà", "address": "P6X3+7P9, xã Tân Hà, Lâm Hà, Lâm Đồng", "phone": "02633.616.626" },
+      { "name": "Bến xe Đơn Dương", "address": "QL27, TT. Thạnh Mỹ, Đơn Dương, Lâm Đồng", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Bình Phước",
+    "code": 70,
+    "division_type": "tỉnh",
+    "codename": "tinh_binh_phuoc",
+    "phone_code": 271,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Trường Hải Bình Phước", "address": "Số 741, đường Phú Riềng Đỏ, P. Tân Xuân, Tx. Đồng Xoài, Bình Phước", "phone": "02713.879.612" },
+      { "name": "Bến Xe Đồng Xoài", "address": "648 Phú Riềng Đỏ, Khu Phố Tân Trà, P. Tân Xuân, tx. Đồng Xoài, Bình Phước", "phone": "02713.883.057" },
+      { "name": "Bến xe Thành Công", "address": "Số 604 Phú Riềng Đỏ, P. Tân Xuân, TX. Đồng Xoài, Bình Phước", "phone": "1900 6962" },
+      { "name": "Bến Xe Bù Đăng", "address": "QL14, Đức Phong, Bù Đăng, TỈNH Bình Phước", "phone": null },
+      { "name": "Bến xe Phước Long", "address": "Số 56, tỉnh lộ 741, TT. Thác Mơ, Phước Long, Bình Phước", "phone": "02713.778322" },
+      { "name": "Bến Xe Bù Đốp", "address": "ĐT759, Thiện Hưng, Bù Đốp, tỉnh Bình Phước", "phone": "02713.556.556" },
+      { "name": "Bến xe Lộc Ninh", "address": "Lộc Ninh, tỉnh Bình Phước", "phone": "02713.567.125" },
+      { "name": "Bến xe Thành Công (Bù Đăng)", "address": "TT. Bù Đăng, Đức Phong, Huyện Bù Đăng, Tỉnh Bình Phước", "phone": "02713.888.888" }
+    ]
+  },
+  {
+    "name": "Tỉnh Tây Ninh",
+    "code": 72,
+    "division_type": "tỉnh",
+    "codename": "tinh_tay_ninh",
+    "phone_code": 276,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Tây Ninh", "address": "Khu phố 1, đường Trưng Nữ Vương, Phường 2, Tp. Tây Ninh, Tây Ninh", "phone": "02763.825.222" },
+      { "name": "Bến xe Hoà Thành", "address": "Bến xe Long Hoa, Khu phố 2, huyện Hoà Thành, Tây Ninh", "phone": "02763.844.663" },
+      { "name": "Bến xe Tân Biên", "address": "Khóm 2, TT Tân Biên, Huyện Tân Biên, Tây Ninh", "phone": "03763.733.444" },
+      { "name": "Bến xe Dương Minh Châu", "address": "Khu phố 1, TT Dương Minh Châu, Huyện Dương Minh Châu, Tây Ninh", "phone": "02763.877.273" },
+      { "name": "Bến xe Châu Thành", "address": "932 đường Hoàng Lê Khang, TT Châu Thành, huyện Châu Thành, Tây Ninh", "phone": "02763.878.184" },
+      { "name": "Bến xe Gò Dầu", "address": "QL22, TT Gò Dầu, Tây Ninh", "phone": "02763.854.291" },
+      { "name": "Bến xe Thị Xã Tây Ninh", "address": "136 khu phố 1, Phường 2, tỉnh Tây Ninh", "phone": "02763.823.363" },
+      { "name": "Bến xe Long Hoa", "address": "Khu phố 2, Hoà Thành, Tây Ninh", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Bình Dương",
+    "code": 74,
+    "division_type": "tỉnh",
+    "codename": "tinh_binh_duong",
+    "phone_code": 274,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Bình Dương", "address": "311 Đ. 30/4, Phú Thọ, Thủ Dầu Một, Bình Dương", "phone": "02743.833.610" },
+      { "name": "Bến xe Bến Cát", "address": "KCN, TĐC Mỹ Phước 1, ấp 6, Thới Hoà, TT Bến Cát, Tỉnh Bình Dương", "phone": "0918.747.484" },
+      { "name": "Bến xe Lam Hồng", "address": "QL1A, Xã An Bình, Huyện Dĩ An, tỉnh Bình Dương", "phone": "0985.966.524" },
+      { "name": "Bến xe Tân Uyên", "address": "Huyện Tân Uyên- tỉnh Bình Dương", "phone": "0916.646.097" },
+      { "name": "Bến xe Quang Vinh", "address": "Ấp 1- xã Hội Nghĩa -Tân Uyên- tỉnh Bình Dương", "phone": "0907.898.280" }
+    ]
+  },
+  {
+    "name": "Tỉnh Đồng Nai",
+    "code": 75,
+    "division_type": "tỉnh",
+    "codename": "tinh_dong_nai",
+    "phone_code": 251,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Đồng Nai", "address": "Phường Bình Đa – TP. Biên Hòa – Đồng Nai", "phone": "02513.934.969" },
+      { "name": "Bến xe ngã tư Vũng Tàu", "address": "QL 1A, An Bình, TP. Biên Hòa – Đồng Nai", "phone": "02513.836.081" },
+      { "name": "Bến xe Dầu Giây", "address": "QL 1A, Thống Nhất – Đồng Nai", "phone": "0919.449.119" },
+      { "name": "Bến xe Long Khánh", "address": "Đường Hung Vương, P. Xuân Trung, TX. Long Khánh, Đồng Nai", "phone": "02153.877.039" },
+      { "name": "Bến xe Bảo Bình", "address": "Bảo Bình, huyện Cẩm Mỹ, tỉnh Đồng Nai", "phone": "0913.676.874" },
+      { "name": "Bến xe Xuân Lộc", "address": "Thị trấn Gia Ray, H. Xuân Lộc, tỉnh Đồng Nai", "phone": "02153.871.668" },
+      { "name": "Bến xe Biên Hoà", "address": "4- Đường Nguyễn Ái Quốc", "phone": "02513.893.208" },
+      { "name": "Bến xe Tân Phú", "address": "Km125, QL 20, Tân Phú, Đồng Nai", "phone": "02153.858,266" },
+      { "name": "Bến xe Sông Ray", "address": "Cẩm Mỹ- Đồng Nai", "phone": "0915.812.769" },
+      { "name": "Bến xe Tam Hiệp", "address": "358/35B, Khóm 2, Tam Hiệp, Biên Hoà, Đồng Nai", "phone": "0913.474.655" },
+      { "name": "Bến xe Trị An", "address": "Vĩnh Cửu, tỉnh Đồng Nai", "phone": "0938.837.837" },
+      { "name": "Bến xe Hố Nai", "address": "Km số 1864, Quốc lộ 1A, P. Tân Biên, TP. Biên Hòa, Đồng Nai", "phone": "0613.881.507" }
+    ]
+  },
+  {
+    "name": "Tỉnh Bà Rịa - Vũng Tàu",
+    "code": 77,
+    "division_type": "tỉnh",
+    "codename": "tinh_ba_ria_vung_tau",
+    "phone_code": 254,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Vũng Tàu", "address": "Nam Kỳ Khởi Nghĩa, Phường Thắng Tam, Vũng Tàu, Bà Rịa – Vũng Tàu", "phone": "02543852777" },
+      { "name": "Bến xe thị xã Bà Rịa", "address": "Đường Bạch Đằng, P. Phước Trung, TX. Bà Rịa", "phone": "0643716519" },
+      { "name": "Bến xe Xuyên Mộc", "address": "Quốc lộ 55, TT. Phước Bửu, Huyện Xuyên Mộc", "phone": "064. 3874164" },
+      { "name": "Bến xe Long Hải", "address": "Tỉnh lộ 44A, TT. Long Hải, Long Điền, Huyện Xuyên Mộc", "phone": "0938274767" },
+      { "name": "Bến xe Châu Đức", "address": "Số 1 Lê Lai, Ngãi Giao, Châu Đức, Bà Rịa Vũng Tàu", "phone": "0983077179" }
+    ]
+  },
+  {
+    "name": "Thành phố Hồ Chí Minh",
+    "code": 79,
+    "division_type": "tỉnh",
+    "codename": "thanh_pho_ho_chi_minh",
+    "phone_code": 28,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe miền Đông", "address": "Số 292 đường Đinh Bộ Lĩnh, P. 26, Q. Bình Thạnh", "phone": "(08) 899 1607" },
+      { "name": "Bến xe miền Tây", "address": "Số 395 đường Kinh Dương Vương, An Lạc, Q. Bình Tân", "phone": "028.3752.1517" },
+      { "name": "Bến xe Tô Châu", "address": "Đường Lê Hồng Phong, Phường 1, Quận 10, TP.HCM", "phone": "0931045345" },
+      { "name": "Bến xe Ngã Tư Ga", "address": "720 Quốc lộ 1A, P. Thạnh Lộc, Q.12, Tp. Hồ Chí Minh", "phone": null },
+      { "name": "Bến xe Củ Chi", "address": "904 Quốc Lộ 22, Thị Trấn Củ Chi, Huyện Củ Chi", "phone": null },
+      { "name": "Bến xe An Sương", "address": "Ngã tư An Sương, quốc lộ 22, Bà Điểm, Hóc Môn", "phone": null },
+      { "name": "Bến xe Chợ Lớn", "address": "266 Hồng Bàng, Quận 5, Thành phố Hồ Chí Minh", "phone": null },
+      { "name": "Bến xe quận 8", "address": "Quốc Lộ 50, đường Tạ Quang Bửu, Phường 5, Quận 8", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Long An",
+    "code": 80,
+    "division_type": "tỉnh",
+    "codename": "tinh_long_an",
+    "phone_code": 272,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Long An Quốc Lộ 1A", "address": "P2, Tp. Tân An, Long An", "phone": "0723.521.127" },
+      { "name": "Bến Xe Khách Long An", "address": "Số 131 QL1, P.4, Tân An, Long An", "phone": "02772.881.236" },
+      { "name": "Bến xe khách Đức Huệ", "address": "Số 129 Đường 838, TT. Đông Thành, Đức Huệ, Long An", "phone": "02973.884.154" },
+      { "name": "Bến xe Hậu Nghĩa", "address": "đường 3/2, thị trấn Hậu Nghĩa, huyện Đức Hòa, Long An", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Tiền Giang",
+    "code": 82,
+    "division_type": "tỉnh",
+    "codename": "tinh_tien_giang",
+    "phone_code": 273,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Tiền Giang", "address": "Số 42 Ấp Bắc, P. 10, TP. Mỹ Tho, Tiền Giang", "phone": "0733955152" },
+      { "name": "Bến Xe Cái Bè", "address": "82RM+993, TT. Cái Bè, Cái Bè, Tiền Giang", "phone": null },
+      { "name": "Bến xe Gò Công", "address": "Đường Đồng Khởi, P4, Gò Công, Tiền Giang", "phone": "02733.841.278" }
+    ]
+  },
+  {
+    "name": "Tỉnh Bến Tre",
+    "code": 83,
+    "division_type": "tỉnh",
+    "codename": "tinh_ben_tre",
+    "phone_code": 275,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Bến Tre", "address": "303, Đoàn Hoàng Minh, Phú Khương, Tp. Bến Tre, Bến Tre", "phone": "02753.822.298" },
+      { "name": "Bến Xe Bình Đại", "address": "Ấp số 3, TT Bình Đại, huyện Bình Đại, Bến Tre", "phone": "02753.871.280" },
+      { "name": "Bến Xe Thạnh Phú", "address": "Ấp số 10, QL 57, TT Thạnh Phú, H. Thạnh Phú, Bến Tre", "phone": "0919214478" },
+      { "name": "Bến Xe Thảo Châu", "address": "122A đường Nguyễn Thị Định, P. Phú Tân, Tp. Bến Tre, Bến Tre", "phone": "02753.822.802" },
+      { "name": "Bến Xe Chợ Lách", "address": "Khu phố số 1, Chợ Lách, Bến Tre", "phone": "02753.585.858" },
+      { "name": "Bến Xe Ba Tri", "address": "Tỉnh lộ 855, TT Ba Tri, Ba Tri, Bến Tre", "phone": "0938837837" }
+    ]
+  },
+  {
+    "name": "Tỉnh Trà Vinh",
+    "code": 84,
+    "division_type": "tỉnh",
+    "codename": "tinh_tra_vinh",
+    "phone_code": 294,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Trà Vinh", "address": "Số 559 QL54, Khóm 4, Phường 9, Trà Vinh", "phone": "0294 3840 324" },
+      { "name": "Bến xe Nguyễn Đáng", "address": "Phường 6, TX Trà Vinh, tỉnh Trà Vinh", "phone": "02943.840.860" }
+    ]
+  },
+  {
+    "name": "Tỉnh Vĩnh Long",
+    "code": 86,
+    "division_type": "tỉnh",
+    "codename": "tinh_vinh_long",
+    "phone_code": 270,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe TP Vĩnh Long", "address": "đường 3/2, Phường 1, TP Vĩnh Long", "phone": "02703.823.769" },
+      { "name": "Bến xe Vũng Liêm", "address": "Tỉnh lộ 902, TT Vũng Liêm, Vĩnh Liêm, Vĩnh Long", "phone": "02703.970.670" },
+      { "name": "Bến xe Vĩnh Long", "address": "QL1A, Thị xã Vĩnh long, Vĩnh Long", "phone": "02703.823.458" }
+    ]
+  },
+  {
+    "name": "Tỉnh Đồng Tháp",
+    "code": 87,
+    "division_type": "tỉnh",
+    "codename": "tinh_dong_thap",
+    "phone_code": 277,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Cao Lãnh", "address": "71/1 đường Lý Thường Kiệt, P. 2, TP. Cao Lãnh, Đồng Tháp", "phone": "0773.851.116" },
+      { "name": "Bến Xe Khách Sa Đéc", "address": "Đường Nguyễn Sinh Sắc, P. 2, TP. Sa Đéc, Đồng Tháp", "phone": "0277.3861.436" },
+      { "name": "Bến xe Tân Hồng", "address": "QL30 Ấp An Định, Cao Lãnh, Đồng Tháp", "phone": "02773.851.157" },
+      { "name": "Bến xe Ghi Sê", "address": "phường 2, TX Sa Đéc, Tân Phú Đông, Sa Đéc, tỉnh Đồng Tháp", "phone": "02773.869.766" },
+      { "name": "Bến xe Châu Thành", "address": "161, QL80, Cái Tàu Hạ, Châu Thành, Đồng Tháp", "phone": "02773.840.251" },
+      { "name": "Bến xe Hồng Ngự", "address": "An Lộc, An Bình, Hồng Ngự, Đồng Tháp", "phone": "02773.837.383" },
+      { "name": "Bến xe Tam Nông", "address": "Trần Hưng Đạo, Tràm chim, huyện Tam Nông", "phone": "0918.185.553" }
+    ]
+  },
+  {
+    "name": "Tỉnh An Giang",
+    "code": 89,
+    "division_type": "tỉnh",
+    "codename": "tinh_an_giang",
+    "phone_code": 296,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe An Giang", "address": "Trung tâm tỉnh An Giang, đường Hùng Vương, Mỹ Long", "phone": null },
+      { "name": "Bến Xe Long Xuyên", "address": "392, P, Phạm Cự Lượng, Tp. Long Xuyên, An Giang", "phone": "02963841125" },
+      { "name": "Bến xe Chi Lăng", "address": "Chi Lăng, huyện Tịnh Biên, An Giang", "phone": "0913766310" },
+      { "name": "Bến xe khách huyện Chợ Mới", "address": "ĐT942, Thị trấn Chợ Mới, Chợ Mới, An Giang", "phone": "0384 797 965" },
+      { "name": "Bến Xe Tri Tôn", "address": "Đường Ngô Quyền, TT. Tri Tôn, huyện Tri Tôn, An Giang", "phone": "02963872545" },
+      { "name": "Bến xe Tân Châu", "address": "Trần Phú, TT. Tân Châu, Tx. Tân Châu, An Giang", "phone": "02968226616" },
+      { "name": "Bến Xe Khách Châu Đốc", "address": "Phường Vĩnh Mỹ, Vĩnh Mỹ, Châu Đốc, An Giang", "phone": "02963867171" },
+      { "name": "Bến xe thị trấn Óc Eo", "address": "Tỉnh lộ ĐT943, TT. Ocs Eo, Thoại Sơn, An Giang", "phone": "02963870293" },
+      { "name": "Bến xe Phú Tân", "address": "ĐT954, TT. Phú Mỹ, Phú Tân, An Giang", "phone": "02963827063" },
+      { "name": "Bến xe Tịnh Biên", "address": "327 đường Hữu Nghị, Xuân Tô, Thị trấn Chi Lăng, huyện Tịnh Biên, An Giang", "phone": "091948 9213" },
+      { "name": "Bến Xe Núi Sam", "address": "Kha Thị Láng, P. Núi Sam, Châu Đốc, An Giang", "phone": null },
+      { "name": "Bến xe Châu Đốc", "address": "QL91, Vĩnh Mỹ, Châu Đốc, Châu Phú B", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Kiên Giang",
+    "code": 91,
+    "division_type": "tỉnh",
+    "codename": "tinh_kien_giang",
+    "phone_code": 297,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Kiên Giang", "address": "Ấp So Đũa, Xã Vĩnh Hoà Hiệp, H. Châu Thành, Kiên Giang", "phone": null },
+      { "name": "Bến xe Rạch Sỏi", "address": "12, Mai Thị Hồng Hạnh, huyện Rạch Giá, Kiên Giang", "phone": "02973.864.086" },
+      { "name": "Bến Xe Khách An Minh", "address": "QL63, JWFV+V4X, TT. Thứ Mười Một, An Minh, Kiên Giang", "phone": null },
+      { "name": "Bến xe Rạch Giá", "address": "260A đường Nguyễn Bỉnh Khiêm, Vĩnh Thanh, Rạch Giá, Kiên Giang", "phone": "02973.862.274" },
+      { "name": "Bến Xe Khách Ba Hòn", "address": "Đường Huỳnh Mẫn Đạt, Thị trấn Kiên Lương, tx. Kiên Lương, Kiên Giang", "phone": "02973.704.343" },
+      { "name": "Bến xe Hà Tiên", "address": "Hẻm 51, Tô Châu, Hà Tiên, Kiên Giang", "phone": null }
+    ]
+  },
+  {
+    "name": "Thành phố Cần Thơ",
+    "code": 92,
+    "division_type": "tỉnh",
+    "codename": "thanh_pho_can_tho",
+    "phone_code": 292,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Trung Tâm", "address": "Đường dẫn cầu Cần Thơ, QL1A, Hưng Thành, Cái Răng", "phone": "097 252 55 58" },
+      { "name": "Bến Xe Khách Cờ Đỏ", "address": "Tỉnh lộ 922, ấp Thới Thuận, Cờ Đỏ, TP. Cần Thơ", "phone": "0917.913.321" },
+      { "name": "Bến xe khách Cần Thơ", "address": "91b Đường Nguyễn Văn Linh, Hưng Lợi, Ninh Kiều", "phone": "02923769768" },
+      { "name": "Bến Xe khách Ô Môn", "address": "KV5, Quốc lộ 91, Q. Ô Môn, Tp. Cần Thơ", "phone": "02923861859" },
+      { "name": "Bến xe Thành Phố", "address": "Đường Nguyễn Trãi, Phường An Hội, Ninh Kiều", "phone": "02923821475" },
+      { "name": "Bến xe Tô Châu", "address": "6 Hùng Vương, An Hội, Ninh Kiều", "phone": null },
+      { "name": "Bến xe Hùng Vương", "address": "Số 01 đường Hùng Vương, Thới Bình, Ninh Kiều", "phone": "02933769768" }
+    ]
+  },
+  {
+    "name": "Tỉnh Hậu Giang",
+    "code": 93,
+    "division_type": "tỉnh",
+    "codename": "tinh_hau_giang",
+    "phone_code": 293,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Vị Thanh", "address": "Đường Trần Hưng Đạo, P.5, Vị Thanh, Hậu Giang", "phone": "02933.876.313" },
+      { "name": "Bến Xe Khách Long Mỹ", "address": "Đường Trần Hưng Đạo, Thị trấn. Long Mỹ, Long Mỹ, Hậu Giang", "phone": "02933.872.979" },
+      { "name": "Bến Xe Khách Ngã Bảy", "address": "RRH6+79P, Ngã Bảy, Hậu Giang", "phone": null },
+      { "name": "Bến Xe Khách Châu Thành A", "address": "QL 61B, tt Rạch Gòi, Châu Thành A, Hậu Giang", "phone": null },
+      { "name": "Bến Xe Cái Tắc", "address": "Số 420 QL1A, TT. Cái Tắc, Châu Thành A, Hậu Giang", "phone": "02933.947.947" },
+      { "name": "Bến xe Long Mỹ", "address": "Trần Hưng Đạo, TT. Long Mỹ, Long Mỹ, Hậu Giang", "phone": "02933.872.979" },
+      { "name": "Bến Xe Kinh Cùng", "address": "Số 950 QL61, Tân Bình, Phụng Hiệp, Hậu Giang", "phone": "02932.477.476" }
+    ]
+  },
+  {
+    "name": "Tỉnh Sóc Trăng",
+    "code": 94,
+    "division_type": "tỉnh",
+    "codename": "tinh_soc_trang",
+    "phone_code": 299,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Sóc Trăng", "address": "38 đường Lê Duẩn – tỉnh Sóc Trăng", "phone": "02993822374" },
+      { "name": "Bến xe Trà Men", "address": "27 đường Hùng Vương, Phường 6, Tp. Sóc Trăng, Sóc Trăng", "phone": null },
+      { "name": "Bến xe huyện Kế Sách", "address": "Huyện Kế Sách, Sóc Trăng", "phone": "02993.876.338" },
+      { "name": "Bến xe Thạnh Trị", "address": "TT Phú Lộc, huyện Thạnh Trị, Sóc Trăng", "phone": "02993.867.270" },
+      { "name": "Bến xe Vĩnh Châu", "address": "TX Vĩnh Châu, huyện Vĩnh Châu, Sóc Trăng", "phone": "02993.865.732" },
+      { "name": "Bến xe Mỹ Quới", "address": "Mỹ Quới, Ngã NĂM, Sóc Trăng", "phone": null },
+      { "name": "Bến xe Phú lộc", "address": "QL1A, Phú Lộc, Huyện Thạnh Trị, Sóc Trăng", "phone": null }
+    ]
+  },
+  {
+    "name": "Tỉnh Bạc Liêu",
+    "code": 95,
+    "division_type": "tỉnh",
+    "codename": "tinh_bac_lieu",
+    "phone_code": 291,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến xe Gành Hào", "address": "Phan Ngọc Hiển, Gành Hào, Đông Hải, Bạc Liêu", "phone": "02913845301" },
+      { "name": "Bến xe Hộ Phòng", "address": "QL 1A, Hộ Phòng, Giá Lai, Bạc Liêu", "phone": "02913850860" },
+      { "name": "Bến xe Phước Long", "address": "Tỉnh Lộ số 2, TT. Phước Long, Bạc Liêu", "phone": "02913864269" },
+      { "name": "Bến xe Bạc Liêu", "address": "Đường Trần Phú, Tp. Bạc Liêu", "phone": "02913822408" }
+    ]
+  },
+  {
+    "name": "Tỉnh Cà Mau",
+    "code": 96,
+    "division_type": "tỉnh",
+    "codename": "tinh_ca_mau",
+    "phone_code": 290,
+    "districts": [],
+    "bus_stations": [
+      { "name": "Bến Xe Khách Cà Mau", "address": "Phường 8, TX. Cà Mau, Cà Mau", "phone": "02903.811.009" },
+      { "name": "Bến xe Cà Mau", "address": "QL1A, Đường Lý Thường Kiệt, P6, TX. Cà Mau, Cà Mau", "phone": "02903.811.063" }
+    ]
+  }
+]

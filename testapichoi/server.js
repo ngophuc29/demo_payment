@@ -2,7 +2,9 @@ const express = require('express')
 const app = express()
 const port = 7700
 const cors = require('cors')
- 
+const path = require('path') // <-- existing
+const fs = require('fs') // <-- added
+
 app.use(cors())
 
 app.get('/', (req, res) => {
@@ -377,6 +379,62 @@ const airportsData = {
 app.get('/airports', (req, res) => {
   console.log('GET /airports called');
   res.json(airportsData);
+})
+
+// thêm đường dẫn tới 2 file JSON (ở thư mục cha)
+const busRawFile = path.join(__dirname, '..', 'vietnam_bus_chua_sat_nhap.json')
+const busNormalizedFile = path.join(__dirname, '..', 'vietnam_bus_sau_sat_nhap.json')
+
+// route trả về file JSON "chua_sat_nhap" - now reads, logs length if array, returns JSON
+app.get('/bus/vietnam_bus_chua_sat_nhap', (req, res) => {
+  console.log('GET /bus/vietnam_bus_chua_sat_nhap called');
+  fs.readFile(busRawFile, 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error reading vietnam_bus_chua_sat_nhap.json:', err);
+      return res.status(500).json({ error: 'Failed to read file' });
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        console.log(`vietnam_bus_chua_sat_nhap: array length = ${parsed.length}`);
+      } else if (parsed && parsed.stations && Array.isArray(parsed.stations)) {
+        console.log(`vietnam_bus_chua_sat_nhap: stations length = ${parsed.stations.length}`);
+      } else {
+        console.log('vietnam_bus_chua_sat_nhap: parsed but not an array');
+      }
+    } catch (e) {
+      console.warn('Could not parse vietnam_bus_chua_sat_nhap.json:', e);
+      return res.status(500).json({ error: 'Failed to parse JSON' });
+    }
+    res.json(parsed);
+  });
+});
+
+// route trả về file JSON "sau_sat_nhap" - now reads, logs length if array, returns JSON
+app.get('/bus/vietnam_bus_sau_sat_nhap', (req, res) => {
+  console.log('GET /bus/vietnam_bus_sau_sat_nhap called');
+  fs.readFile(busNormalizedFile, 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error reading vietnam_bus_sau_sat_nhap.json:', err);
+      return res.status(500).json({ error: 'Failed to read file' });
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        console.log(`vietnam_bus_sau_sat_nhap: array length = ${parsed.length}`);
+      } else if (parsed && parsed.stations && Array.isArray(parsed.stations)) {
+        console.log(`vietnam_bus_sau_sat_nhap: stations length = ${parsed.stations.length}`);
+      } else {
+        console.log('vietnam_bus_sau_sat_nhap: parsed but not an array');
+      }
+    } catch (e) {
+      console.warn('Could not parse vietnam_bus_sau_sat_nhap.json:', e);
+      return res.status(500).json({ error: 'Failed to parse JSON' });
+    }
+    res.json(parsed);
+  });
 })
 
 app.listen(port, () => {
