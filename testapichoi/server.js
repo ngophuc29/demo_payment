@@ -382,29 +382,35 @@ app.get('/airports', (req, res) => {
 })
 
 // thêm đường dẫn tới 2 file JSON (ở thư mục cha)
-const busRawFile = path.join(__dirname, '..', 'vietnam_bus_chua_sat_nhap.json')
-const busNormalizedFile = path.join(__dirname, '..', 'vietnam_bus_sau_sat_nhap.json')
+const busRawFile = path.join(__dirname, '..', 'cac_ben_xe_bus_chua_sat_nhap.json')
+const busNormalizedFile = path.join(__dirname, '..', 'cac_ben_xe_bus_sau_sat_nhap.json')
+
+// --- New: đường dẫn tới file nhà xe ---
+const nhaxeFile = path.join(__dirname, '..', 'nhaxekhach.json')
+
+// --- New: đường dẫn tới file loại xe (loaixe.json) ---
+const loaixeFile = path.join(__dirname, '..', 'dsloaixevexere.json')
 
 // route trả về file JSON "chua_sat_nhap" - now reads, logs length if array, returns JSON
-app.get('/bus/vietnam_bus_chua_sat_nhap', (req, res) => {
-  console.log('GET /bus/vietnam_bus_chua_sat_nhap called');
+app.get('/bus/cac_ben_xe_bus_chua_sat_nhap', (req, res) => {
+  console.log('GET /bus/cac_ben_xe_bus_chua_sat_nhap called');
   fs.readFile(busRawFile, 'utf8', (err, data) => {
     if (err) {
-      console.error('Error reading vietnam_bus_chua_sat_nhap.json:', err);
+      console.error('Error reading cac_ben_xe_bus_chua_sat_nhap.json:', err);
       return res.status(500).json({ error: 'Failed to read file' });
     }
     let parsed;
     try {
       parsed = JSON.parse(data);
       if (Array.isArray(parsed)) {
-        console.log(`vietnam_bus_chua_sat_nhap: array length = ${parsed.length}`);
+        console.log(`cac_ben_xe_bus_chua_sat_nhap: array length = ${parsed.length}`);
       } else if (parsed && parsed.stations && Array.isArray(parsed.stations)) {
-        console.log(`vietnam_bus_chua_sat_nhap: stations length = ${parsed.stations.length}`);
+        console.log(`cac_ben_xe_bus_chua_sat_nhap: stations length = ${parsed.stations.length}`);
       } else {
-        console.log('vietnam_bus_chua_sat_nhap: parsed but not an array');
+        console.log('cac_ben_xe_bus_chua_sat_nhap: parsed but not an array');
       }
     } catch (e) {
-      console.warn('Could not parse vietnam_bus_chua_sat_nhap.json:', e);
+      console.warn('Could not parse cac_ben_xe_bus_chua_sat_nhap.json:', e);
       return res.status(500).json({ error: 'Failed to parse JSON' });
     }
     res.json(parsed);
@@ -412,30 +418,101 @@ app.get('/bus/vietnam_bus_chua_sat_nhap', (req, res) => {
 });
 
 // route trả về file JSON "sau_sat_nhap" - now reads, logs length if array, returns JSON
-app.get('/bus/vietnam_bus_sau_sat_nhap', (req, res) => {
-  console.log('GET /bus/vietnam_bus_sau_sat_nhap called');
+app.get('/bus/cac_ben_xe_bus_sau_sat_nhap', (req, res) => {
+  console.log('GET /bus/cac_ben_xe_bus_sau_sat_nhap called');
   fs.readFile(busNormalizedFile, 'utf8', (err, data) => {
     if (err) {
-      console.error('Error reading vietnam_bus_sau_sat_nhap.json:', err);
+      console.error('Error reading cac_ben_xe_bus_sau_sat_nhap.json:', err);
       return res.status(500).json({ error: 'Failed to read file' });
     }
     let parsed;
     try {
       parsed = JSON.parse(data);
       if (Array.isArray(parsed)) {
-        console.log(`vietnam_bus_sau_sat_nhap: array length = ${parsed.length}`);
+        console.log(`cac_ben_xe_bus_sau_sat_nhap: array length = ${parsed.length}`);
       } else if (parsed && parsed.stations && Array.isArray(parsed.stations)) {
-        console.log(`vietnam_bus_sau_sat_nhap: stations length = ${parsed.stations.length}`);
+        console.log(`cac_ben_xe_bus_sau_sat_nhap: stations length = ${parsed.stations.length}`);
       } else {
-        console.log('vietnam_bus_sau_sat_nhap: parsed but not an array');
+        console.log('cac_ben_xe_bus_sau_sat_nhap: parsed but not an array');
       }
     } catch (e) {
-      console.warn('Could not parse vietnam_bus_sau_sat_nhap.json:', e);
+      console.warn('Could not parse cac_ben_xe_bus_sau_sat_nhap.json:', e);
       return res.status(500).json({ error: 'Failed to parse JSON' });
     }
     res.json(parsed);
   });
 })
+
+// --- New: route trả về danh sách nhà xe từ nhaxekhach.json ---
+app.get('/bus/nhaxe', (req, res) => {
+  console.log('GET /nhaxe called');
+  fs.readFile(nhaxeFile, 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error reading nhaxekhach.json:', err);
+      return res.status(500).json({ error: 'Failed to read file' });
+    }
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        console.log(`nhaxekhach: array length = ${parsed.length}`);
+      } else {
+        console.log('nhaxekhach: parsed but not an array');
+      }
+      return res.json(parsed);
+    } catch (e) {
+      console.warn('Could not parse nhaxekhach.json:', e);
+      return res.status(500).json({ error: 'Failed to parse JSON' });
+    }
+  });
+})
+
+// --- New: route trả về toàn bộ loại xe ---
+app.get('/bus/loaixe', (req, res) => {
+  console.log('GET /loaixe called');
+  fs.readFile(loaixeFile, 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error reading loaixe.json:', err);
+      return res.status(500).json({ error: 'Failed to read file' });
+    }
+    try {
+      const parsed = JSON.parse(data);
+      const list = parsed.vehicle_types || parsed;
+      if (Array.isArray(list)) {
+        console.log(`loaixe: vehicle_types length = ${list.length}`);
+      } else {
+        console.log('loaixe: parsed but vehicle_types not an array');
+      }
+      return res.json(list);
+    } catch (e) {
+      console.warn('Could not parse loaixe.json:', e);
+      return res.status(500).json({ error: 'Failed to parse JSON' });
+    }
+  });
+});
+
+// --- New: route trả về 1 loại xe theo id ---
+app.get('/bus/loaixe/:id', (req, res) => {
+  const id = req.params.id;
+  console.log(`GET /loaixe/${id} called`);
+  fs.readFile(loaixeFile, 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error reading loaixe.json:', err);
+      return res.status(500).json({ error: 'Failed to read file' });
+    }
+    try {
+      const parsed = JSON.parse(data);
+      const list = parsed.vehicle_types || [];
+      const item = list.find(v => v.id === id);
+      if (!item) {
+        return res.status(404).json({ error: 'Vehicle type not found' });
+      }
+      return res.json(item);
+    } catch (e) {
+      console.warn('Could not parse loaixe.json:', e);
+      return res.status(500).json({ error: 'Failed to parse JSON' });
+    }
+  });
+});
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`)

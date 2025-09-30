@@ -1,0 +1,580 @@
+{
+  "vehicle_types": [
+    {
+      "id": "limousine_9",
+      "name": "Limousine 9 chỗ",
+      "seat_capacity": 9,
+      "seat_type": "seat_vip",
+      "notes": "Limousine VIP, phù hợp tuyến ngắn 1-3 giờ",
+      "layout": {
+        "layout_type": "grid",
+        "rows": [
+          {
+            "row_index": 1,
+            "seats": [
+              { "seat_id": "1", "label": "1", "type": "seat_vip", "pos": { "r": 1, "c": 1 } },
+              { "seat_id": "2", "label": "2", "type": "seat_vip", "pos": { "r": 1, "c": 2 } },
+              { "seat_id": "3", "label": "3", "type": "seat_vip", "pos": { "r": 1, "c": 3 } }
+            ]
+          },
+          {
+            "row_index": 2,
+            "seats": [
+              { "seat_id": "4", "label": "4", "type": "seat_vip", "pos": { "r": 2, "c": 1 } },
+              { "seat_id": "5", "label": "5", "type": "seat_vip", "pos": { "r": 2, "c": 2 } },
+              { "seat_id": "6", "label": "6", "type": "seat_vip", "pos": { "r": 2, "c": 3 } }
+            ]
+          },
+          {
+            "row_index": 3,
+            "seats": [
+              { "seat_id": "7", "label": "7", "type": "seat_vip", "pos": { "r": 3, "c": 1 } },
+              { "seat_id": "8", "label": "8", "type": "seat_vip", "pos": { "r": 3, "c": 2 } },
+              { "seat_id": "9", "label": "9", "type": "seat_vip", "pos": { "r": 3, "c": 3 } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "limousine_16",
+      "name": "Limousine 16 chỗ",
+      "seat_capacity": 16,
+      "seat_type": "seat_vip",
+      "notes": "Limousine 16 chỗ (VIP)",
+      "layout": {
+        "layout_type": "grid",
+        "rows": [
+          {
+            "row_index": 1,
+            "seats": [
+              { "seat_id": "1", "label": "1", "type": "seat_vip", "pos": { "r": 1, "c": 1 } },
+              { "seat_id": "2", "label": "2", "type": "seat_vip", "pos": { "r": 1, "c": 2 } },
+              { "seat_id": "3", "label": "3", "type": "seat_vip", "pos": { "r": 1, "c": 3 } },
+              { "seat_id": "4", "label": "4", "type": "seat_vip", "pos": { "r": 1, "c": 4 } }
+            ]
+          },
+          {
+            "row_index": 2,
+            "seats": [
+              { "seat_id": "5", "label": "5", "type": "seat_vip", "pos": { "r": 2, "c": 1 } },
+              { "seat_id": "6", "label": "6", "type": "seat_vip", "pos": { "r": 2, "c": 2 } },
+              { "seat_id": "7", "label": "7", "type": "seat_vip", "pos": { "r": 2, "c": 3 } },
+              { "seat_id": "8", "label": "8", "type": "seat_vip", "pos": { "r": 2, "c": 4 } }
+            ]
+          },
+          {
+            "row_index": 3,
+            "seats": [
+              { "seat_id": "9", "label": "9", "type": "seat_vip", "pos": { "r": 3, "c": 1 } },
+              { "seat_id": "10", "label": "10", "type": "seat_vip", "pos": { "r": 3, "c": 2 } },
+              { "seat_id": "11", "label": "11", "type": "seat_vip", "pos": { "r": 3, "c": 3 } },
+              { "seat_id": "12", "label": "12", "type": "seat_vip", "pos": { "r": 3, "c": 4 } }
+            ]
+          },
+          {
+            "row_index": 4,
+            "seats": [
+              { "seat_id": "13", "label": "13", "type": "seat_vip", "pos": { "r": 4, "c": 1 } },
+              { "seat_id": "14", "label": "14", "type": "seat_vip", "pos": { "r": 4, "c": 2 } },
+              { "seat_id": "15", "label": "15", "type": "seat_vip", "pos": { "r": 4, "c": 3 } },
+              { "seat_id": "16", "label": "16", "type": "seat_vip", "pos": { "r": 4, "c": 4 } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "seater_29",
+      "name": "Xe ghế ngồi 29 chỗ",
+      "seat_capacity": 29,
+      "seat_type": "seat_recline",
+      "notes": "Bố trí 2+1 (hàng ~10), phù hợp tuyến ngắn",
+      "layout": {
+        "layout_type": "grid",
+        "rows": [
+          { "row_index": 1, "seats": [
+              { "seat_id": "1A", "label": "1A", "type": "seat_recline", "pos": { "r": 1, "c": 1 } },
+              { "seat_id": "1B", "label": "1B", "type": "seat_recline", "pos": { "r": 1, "c": 2 } },
+              { "seat_id": "1C", "label": "1C", "type": "seat_recline", "pos": { "r": 1, "c": 3 } }
+            ]
+          },
+          { "row_index": 2, "seats": [
+              { "seat_id": "2A", "label": "2A", "type": "seat_recline", "pos": { "r": 2, "c": 1 } },
+              { "seat_id": "2B", "label": "2B", "type": "seat_recline", "pos": { "r": 2, "c": 2 } },
+              { "seat_id": "2C", "label": "2C", "type": "seat_recline", "pos": { "r": 2, "c": 3 } }
+            ]
+          },
+          { "row_index": 3, "seats": [
+              { "seat_id": "3A", "label": "3A", "type": "seat_recline", "pos": { "r": 3, "c": 1 } },
+              { "seat_id": "3B", "label": "3B", "type": "seat_recline", "pos": { "r": 3, "c": 2 } },
+              { "seat_id": "3C", "label": "3C", "type": "seat_recline", "pos": { "r": 3, "c": 3 } }
+            ]
+          },
+          { "row_index": 4, "seats": [
+              { "seat_id": "4A", "label": "4A", "type": "seat_recline", "pos": { "r": 4, "c": 1 } },
+              { "seat_id": "4B", "label": "4B", "type": "seat_recline", "pos": { "r": 4, "c": 2 } },
+              { "seat_id": "4C", "label": "4C", "type": "seat_recline", "pos": { "r": 4, "c": 3 } }
+            ]
+          },
+          { "row_index": 5, "seats": [
+              { "seat_id": "5A", "label": "5A", "type": "seat_recline", "pos": { "r": 5, "c": 1 } },
+              { "seat_id": "5B", "label": "5B", "type": "seat_recline", "pos": { "r": 5, "c": 2 } },
+              { "seat_id": "5C", "label": "5C", "type": "seat_recline", "pos": { "r": 5, "c": 3 } }
+            ]
+          },
+          { "row_index": 6, "seats": [
+              { "seat_id": "6A", "label": "6A", "type": "seat_recline", "pos": { "r": 6, "c": 1 } },
+              { "seat_id": "6B", "label": "6B", "type": "seat_recline", "pos": { "r": 6, "c": 2 } },
+              { "seat_id": "6C", "label": "6C", "type": "seat_recline", "pos": { "r": 6, "c": 3 } }
+            ]
+          },
+          { "row_index": 7, "seats": [
+              { "seat_id": "7A", "label": "7A", "type": "seat_recline", "pos": { "r": 7, "c": 1 } },
+              { "seat_id": "7B", "label": "7B", "type": "seat_recline", "pos": { "r": 7, "c": 2 } },
+              { "seat_id": "7C", "label": "7C", "type": "seat_recline", "pos": { "r": 7, "c": 3 } }
+            ]
+          },
+          { "row_index": 8, "seats": [
+              { "seat_id": "8A", "label": "8A", "type": "seat_recline", "pos": { "r": 8, "c": 1 } },
+              { "seat_id": "8B", "label": "8B", "type": "seat_recline", "pos": { "r": 8, "c": 2 } },
+              { "seat_id": "8C", "label": "8C", "type": "seat_recline", "pos": { "r": 8, "c": 3 } }
+            ]
+          },
+          { "row_index": 9, "seats": [
+              { "seat_id": "9A", "label": "9A", "type": "seat_recline", "pos": { "r": 9, "c": 1 } },
+              { "seat_id": "9B", "label": "9B", "type": "seat_recline", "pos": { "r": 9, "c": 2 } },
+              { "seat_id": "9C", "label": "9C", "type": "seat_recline", "pos": { "r": 9, "c": 3 } }
+            ]
+          },
+          { "row_index": 10, "seats": [
+              { "seat_id": "10A", "label": "10A", "type": "seat_recline", "pos": { "r": 10, "c": 1 } },
+              { "seat_id": "10B", "label": "10B", "type": "seat_recline", "pos": { "r": 10, "c": 2 } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "seater_45",
+      "name": "Xe ghế ngồi 45 chỗ",
+      "seat_capacity": 45,
+      "seat_type": "seat_regular",
+      "notes": "Bố trí 2+2, thường dùng trên các tuyến ngắn/xe khách cũ",
+      "layout": {
+        "layout_type": "grid",
+        "rows": [
+          { "row_index": 1, "seats": [
+              { "seat_id": "1A", "label": "1A", "type": "seat_regular", "pos": { "r": 1, "c": 1 } },
+              { "seat_id": "1B", "label": "1B", "type": "seat_regular", "pos": { "r": 1, "c": 2 } },
+              { "seat_id": "1C", "label": "1C", "type": "seat_regular", "pos": { "r": 1, "c": 3 } },
+              { "seat_id": "1D", "label": "1D", "type": "seat_regular", "pos": { "r": 1, "c": 4 } }
+            ]
+          },
+          { "row_index": 2, "seats": [
+              { "seat_id": "2A", "label": "2A", "type": "seat_regular", "pos": { "r": 2, "c": 1 } },
+              { "seat_id": "2B", "label": "2B", "type": "seat_regular", "pos": { "r": 2, "c": 2 } },
+              { "seat_id": "2C", "label": "2C", "type": "seat_regular", "pos": { "r": 2, "c": 3 } },
+              { "seat_id": "2D", "label": "2D", "type": "seat_regular", "pos": { "r": 2, "c": 4 } }
+            ]
+          },
+          { "row_index": 3, "seats": [
+              { "seat_id": "3A", "label": "3A", "type": "seat_regular", "pos": { "r": 3, "c": 1 } },
+              { "seat_id": "3B", "label": "3B", "type": "seat_regular", "pos": { "r": 3, "c": 2 } },
+              { "seat_id": "3C", "label": "3C", "type": "seat_regular", "pos": { "r": 3, "c": 3 } },
+              { "seat_id": "3D", "label": "3D", "type": "seat_regular", "pos": { "r": 3, "c": 4 } }
+            ]
+          },
+          { "row_index": 4, "seats": [
+              { "seat_id": "4A", "label": "4A", "type": "seat_regular", "pos": { "r": 4, "c": 1 } },
+              { "seat_id": "4B", "label": "4B", "type": "seat_regular", "pos": { "r": 4, "c": 2 } },
+              { "seat_id": "4C", "label": "4C", "type": "seat_regular", "pos": { "r": 4, "c": 3 } },
+              { "seat_id": "4D", "label": "4D", "type": "seat_regular", "pos": { "r": 4, "c": 4 } }
+            ]
+          },
+          { "row_index": 5, "seats": [
+              { "seat_id": "5A", "label": "5A", "type": "seat_regular", "pos": { "r": 5, "c": 1 } },
+              { "seat_id": "5B", "label": "5B", "type": "seat_regular", "pos": { "r": 5, "c": 2 } },
+              { "seat_id": "5C", "label": "5C", "type": "seat_regular", "pos": { "r": 5, "c": 3 } },
+              { "seat_id": "5D", "label": "5D", "type": "seat_regular", "pos": { "r": 5, "c": 4 } }
+            ]
+          },
+          { "row_index": 6, "seats": [
+              { "seat_id": "6A", "label": "6A", "type": "seat_regular", "pos": { "r": 6, "c": 1 } },
+              { "seat_id": "6B", "label": "6B", "type": "seat_regular", "pos": { "r": 6, "c": 2 } },
+              { "seat_id": "6C", "label": "6C", "type": "seat_regular", "pos": { "r": 6, "c": 3 } },
+              { "seat_id": "6D", "label": "6D", "type": "seat_regular", "pos": { "r": 6, "c": 4 } }
+            ]
+          },
+          { "row_index": 7, "seats": [
+              { "seat_id": "7A", "label": "7A", "type": "seat_regular", "pos": { "r": 7, "c": 1 } },
+              { "seat_id": "7B", "label": "7B", "type": "seat_regular", "pos": { "r": 7, "c": 2 } },
+              { "seat_id": "7C", "label": "7C", "type": "seat_regular", "pos": { "r": 7, "c": 3 } },
+              { "seat_id": "7D", "label": "7D", "type": "seat_regular", "pos": { "r": 7, "c": 4 } }
+            ]
+          },
+          { "row_index": 8, "seats": [
+              { "seat_id": "8A", "label": "8A", "type": "seat_regular", "pos": { "r": 8, "c": 1 } },
+              { "seat_id": "8B", "label": "8B", "type": "seat_regular", "pos": { "r": 8, "c": 2 } },
+              { "seat_id": "8C", "label": "8C", "type": "seat_regular", "pos": { "r": 8, "c": 3 } },
+              { "seat_id": "8D", "label": "8D", "type": "seat_regular", "pos": { "r": 8, "c": 4 } }
+            ]
+          },
+          { "row_index": 9, "seats": [
+              { "seat_id": "9A", "label": "9A", "type": "seat_regular", "pos": { "r": 9, "c": 1 } },
+              { "seat_id": "9B", "label": "9B", "type": "seat_regular", "pos": { "r": 9, "c": 2 } },
+              { "seat_id": "9C", "label": "9C", "type": "seat_regular", "pos": { "r": 9, "c": 3 } },
+              { "seat_id": "9D", "label": "9D", "type": "seat_regular", "pos": { "r": 9, "c": 4 } }
+            ]
+          },
+          { "row_index": 10, "seats": [
+              { "seat_id": "10A", "label": "10A", "type": "seat_regular", "pos": { "r": 10, "c": 1 } },
+              { "seat_id": "10B", "label": "10B", "type": "seat_regular", "pos": { "r": 10, "c": 2 } },
+              { "seat_id": "10C", "label": "10C", "type": "seat_regular", "pos": { "r": 10, "c": 3 } },
+              { "seat_id": "10D", "label": "10D", "type": "seat_regular", "pos": { "r": 10, "c": 4 } }
+            ]
+          },
+          { "row_index": 11, "seats": [
+              { "seat_id": "11A", "label": "11A", "type": "seat_regular", "pos": { "r": 11, "c": 1 } },
+              { "seat_id": "11B", "label": "11B", "type": "seat_regular", "pos": { "r": 11, "c": 2 } },
+              { "seat_id": "11C", "label": "11C", "type": "seat_regular", "pos": { "r": 11, "c": 3 } },
+              { "seat_id": "11D", "label": "11D", "type": "seat_regular", "pos": { "r": 11, "c": 4 } }
+            ]
+          },
+          { "row_index": 12, "seats": [
+              { "seat_id": "12A", "label": "12A", "type": "seat_regular", "pos": { "r": 12, "c": 1 } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "sleeper_40",
+      "name": "Xe giường nằm 40 chỗ",
+      "seat_capacity": 40,
+      "seat_type": "bed_single",
+      "notes": "Xe giường nằm 40 giường (2 dãy, upper/lower)",
+      "layout": {
+        "layout_type": "berth_pair",
+        "rows": [
+          { "row_index": 1, "seats": [
+              { "seat_id": "1U", "label": "1U", "type": "bed_single", "berth": "upper", "pos": { "r": 1, "c": 1 } },
+              { "seat_id": "1L", "label": "1L", "type": "bed_single", "berth": "lower", "pos": { "r": 1, "c": 2 } }
+            ]
+          },
+          { "row_index": 2, "seats": [
+              { "seat_id": "2U", "label": "2U", "type": "bed_single", "berth": "upper", "pos": { "r": 2, "c": 1 } },
+              { "seat_id": "2L", "label": "2L", "type": "bed_single", "berth": "lower", "pos": { "r": 2, "c": 2 } }
+            ]
+          },
+          { "row_index": 3, "seats": [
+              { "seat_id": "3U", "label": "3U", "type": "bed_single", "berth": "upper", "pos": { "r": 3, "c": 1 } },
+              { "seat_id": "3L", "label": "3L", "type": "bed_single", "berth": "lower", "pos": { "r": 3, "c": 2 } }
+            ]
+          },
+          { "row_index": 4, "seats": [
+              { "seat_id": "4U", "label": "4U", "type": "bed_single", "berth": "upper", "pos": { "r": 4, "c": 1 } },
+              { "seat_id": "4L", "label": "4L", "type": "bed_single", "berth": "lower", "pos": { "r": 4, "c": 2 } }
+            ]
+          },
+          { "row_index": 5, "seats": [
+              { "seat_id": "5U", "label": "5U", "type": "bed_single", "berth": "upper", "pos": { "r": 5, "c": 1 } },
+              { "seat_id": "5L", "label": "5L", "type": "bed_single", "berth": "lower", "pos": { "r": 5, "c": 2 } }
+            ]
+          },
+          { "row_index": 6, "seats": [
+              { "seat_id": "6U", "label": "6U", "type": "bed_single", "berth": "upper", "pos": { "r": 6, "c": 1 } },
+              { "seat_id": "6L", "label": "6L", "type": "bed_single", "berth": "lower", "pos": { "r": 6, "c": 2 } }
+            ]
+          },
+          { "row_index": 7, "seats": [
+              { "seat_id": "7U", "label": "7U", "type": "bed_single", "berth": "upper", "pos": { "r": 7, "c": 1 } },
+              { "seat_id": "7L", "label": "7L", "type": "bed_single", "berth": "lower", "pos": { "r": 7, "c": 2 } }
+            ]
+          },
+          { "row_index": 8, "seats": [
+              { "seat_id": "8U", "label": "8U", "type": "bed_single", "berth": "upper", "pos": { "r": 8, "c": 1 } },
+              { "seat_id": "8L", "label": "8L", "type": "bed_single", "berth": "lower", "pos": { "r": 8, "c": 2 } }
+            ]
+          },
+          { "row_index": 9, "seats": [
+              { "seat_id": "9U", "label": "9U", "type": "bed_single", "berth": "upper", "pos": { "r": 9, "c": 1 } },
+              { "seat_id": "9L", "label": "9L", "type": "bed_single", "berth": "lower", "pos": { "r": 9, "c": 2 } }
+            ]
+          },
+          { "row_index": 10, "seats": [
+              { "seat_id": "10U", "label": "10U", "type": "bed_single", "berth": "upper", "pos": { "r": 10, "c": 1 } },
+              { "seat_id": "10L", "label": "10L", "type": "bed_single", "berth": "lower", "pos": { "r": 10, "c": 2 } }
+            ]
+          },
+          { "row_index": 11, "seats": [
+              { "seat_id": "11U", "label": "11U", "type": "bed_single", "berth": "upper", "pos": { "r": 11, "c": 1 } },
+              { "seat_id": "11L", "label": "11L", "type": "bed_single", "berth": "lower", "pos": { "r": 11, "c": 2 } }
+            ]
+          },
+          { "row_index": 12, "seats": [
+              { "seat_id": "12U", "label": "12U", "type": "bed_single", "berth": "upper", "pos": { "r": 12, "c": 1 } },
+              { "seat_id": "12L", "label": "12L", "type": "bed_single", "berth": "lower", "pos": { "r": 12, "c": 2 } }
+            ]
+          },
+          { "row_index": 13, "seats": [
+              { "seat_id": "13U", "label": "13U", "type": "bed_single", "berth": "upper", "pos": { "r": 13, "c": 1 } },
+              { "seat_id": "13L", "label": "13L", "type": "bed_single", "berth": "lower", "pos": { "r": 13, "c": 2 } }
+            ]
+          },
+          { "row_index": 14, "seats": [
+              { "seat_id": "14U", "label": "14U", "type": "bed_single", "berth": "upper", "pos": { "r": 14, "c": 1 } },
+              { "seat_id": "14L", "label": "14L", "type": "bed_single", "berth": "lower", "pos": { "r": 14, "c": 2 } }
+            ]
+          },
+          { "row_index": 15, "seats": [
+              { "seat_id": "15U", "label": "15U", "type": "bed_single", "berth": "upper", "pos": { "r": 15, "c": 1 } },
+              { "seat_id": "15L", "label": "15L", "type": "bed_single", "berth": "lower", "pos": { "r": 15, "c": 2 } }
+            ]
+          },
+          { "row_index": 16, "seats": [
+              { "seat_id": "16U", "label": "16U", "type": "bed_single", "berth": "upper", "pos": { "r": 16, "c": 1 } },
+              { "seat_id": "16L", "label": "16L", "type": "bed_single", "berth": "lower", "pos": { "r": 16, "c": 2 } }
+            ]
+          },
+          { "row_index": 17, "seats": [
+              { "seat_id": "17U", "label": "17U", "type": "bed_single", "berth": "upper", "pos": { "r": 17, "c": 1 } },
+              { "seat_id": "17L", "label": "17L", "type": "bed_single", "berth": "lower", "pos": { "r": 17, "c": 2 } }
+            ]
+          },
+          { "row_index": 18, "seats": [
+              { "seat_id": "18U", "label": "18U", "type": "bed_single", "berth": "upper", "pos": { "r": 18, "c": 1 } },
+              { "seat_id": "18L", "label": "18L", "type": "bed_single", "berth": "lower", "pos": { "r": 18, "c": 2 } }
+            ]
+          },
+          { "row_index": 19, "seats": [
+              { "seat_id": "19U", "label": "19U", "type": "bed_single", "berth": "upper", "pos": { "r": 19, "c": 1 } },
+              { "seat_id": "19L", "label": "19L", "type": "bed_single", "berth": "lower", "pos": { "r": 19, "c": 2 } }
+            ]
+          },
+          { "row_index": 20, "seats": [
+              { "seat_id": "20U", "label": "20U", "type": "bed_single", "berth": "upper", "pos": { "r": 20, "c": 1 } },
+              { "seat_id": "20L", "label": "20L", "type": "bed_single", "berth": "lower", "pos": { "r": 20, "c": 2 } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "sleeper_44",
+      "name": "Xe giường nằm 44 chỗ",
+      "seat_capacity": 44,
+      "seat_type": "bed_single",
+      "notes": "Xe giường 44 giường, thường 2 tầng, có một vài giường đôi tùy hãng",
+      "layout": {
+        "layout_type": "berth_pair",
+        "rows": [
+          { "row_index": 1, "seats": [
+              { "seat_id": "1U", "label": "1U", "type": "bed_single", "berth": "upper", "pos": { "r": 1, "c": 1 } },
+              { "seat_id": "1L", "label": "1L", "type": "bed_single", "berth": "lower", "pos": { "r": 1, "c": 2 } }
+            ]
+          },
+          { "row_index": 2, "seats": [
+              { "seat_id": "2U", "label": "2U", "type": "bed_single", "berth": "upper", "pos": { "r": 2, "c": 1 } },
+              { "seat_id": "2L", "label": "2L", "type": "bed_single", "berth": "lower", "pos": { "r": 2, "c": 2 } }
+            ]
+          },
+          { "row_index": 3, "seats": [
+              { "seat_id": "3U", "label": "3U", "type": "bed_single", "berth": "upper", "pos": { "r": 3, "c": 1 } },
+              { "seat_id": "3L", "label": "3L", "type": "bed_single", "berth": "lower", "pos": { "r": 3, "c": 2 } }
+            ]
+          },
+          { "row_index": 4, "seats": [
+              { "seat_id": "4U", "label": "4U", "type": "bed_single", "berth": "upper", "pos": { "r": 4, "c": 1 } },
+              { "seat_id": "4L", "label": "4L", "type": "bed_single", "berth": "lower", "pos": { "r": 4, "c": 2 } }
+            ]
+          },
+          { "row_index": 5, "seats": [
+              { "seat_id": "5U", "label": "5U", "type": "bed_single", "berth": "upper", "pos": { "r": 5, "c": 1 } },
+              { "seat_id": "5L", "label": "5L", "type": "bed_single", "berth": "lower", "pos": { "r": 5, "c": 2 } }
+            ]
+          },
+          { "row_index": 6, "seats": [
+              { "seat_id": "6U", "label": "6U", "type": "bed_single", "berth": "upper", "pos": { "r": 6, "c": 1 } },
+              { "seat_id": "6L", "label": "6L", "type": "bed_single", "berth": "lower", "pos": { "r": 6, "c": 2 } }
+            ]
+          },
+          { "row_index": 7, "seats": [
+              { "seat_id": "7U", "label": "7U", "type": "bed_single", "berth": "upper", "pos": { "r": 7, "c": 1 } },
+              { "seat_id": "7L", "label": "7L", "type": "bed_single", "berth": "lower", "pos": { "r": 7, "c": 2 } }
+            ]
+          },
+          { "row_index": 8, "seats": [
+              { "seat_id": "8U", "label": "8U", "type": "bed_single", "berth": "upper", "pos": { "r": 8, "c": 1 } },
+              { "seat_id": "8L", "label": "8L", "type": "bed_single", "berth": "lower", "pos": { "r": 8, "c": 2 } }
+            ]
+          },
+          { "row_index": 9, "seats": [
+              { "seat_id": "9U", "label": "9U", "type": "bed_single", "berth": "upper", "pos": { "r": 9, "c": 1 } },
+              { "seat_id": "9L", "label": "9L", "type": "bed_single", "berth": "lower", "pos": { "r": 9, "c": 2 } }
+            ]
+          },
+          { "row_index": 10, "seats": [
+              { "seat_id": "10U", "label": "10U", "type": "bed_single", "berth": "upper", "pos": { "r": 10, "c": 1 } },
+              { "seat_id": "10L", "label": "10L", "type": "bed_single", "berth": "lower", "pos": { "r": 10, "c": 2 } }
+            ]
+          },
+          { "row_index": 11, "seats": [
+              { "seat_id": "11U", "label": "11U", "type": "bed_single", "berth": "upper", "pos": { "r": 11, "c": 1 } },
+              { "seat_id": "11L", "label": "11L", "type": "bed_single", "berth": "lower", "pos": { "r": 11, "c": 2 } }
+            ]
+          },
+          { "row_index": 12, "seats": [
+              { "seat_id": "12U", "label": "12U", "type": "bed_single", "berth": "upper", "pos": { "r": 12, "c": 1 } },
+              { "seat_id": "12L", "label": "12L", "type": "bed_single", "berth": "lower", "pos": { "r": 12, "c": 2 } }
+            ]
+          },
+          { "row_index": 13, "seats": [
+              { "seat_id": "13U", "label": "13U", "type": "bed_single", "berth": "upper", "pos": { "r": 13, "c": 1 } },
+              { "seat_id": "13L", "label": "13L", "type": "bed_single", "berth": "lower", "pos": { "r": 13, "c": 2 } }
+            ]
+          },
+          { "row_index": 14, "seats": [
+              { "seat_id": "14U", "label": "14U", "type": "bed_single", "berth": "upper", "pos": { "r": 14, "c": 1 } },
+              { "seat_id": "14L", "label": "14L", "type": "bed_single", "berth": "lower", "pos": { "r": 14, "c": 2 } }
+            ]
+          },
+          { "row_index": 15, "seats": [
+              { "seat_id": "15U", "label": "15U", "type": "bed_single", "berth": "upper", "pos": { "r": 15, "c": 1 } },
+              { "seat_id": "15L", "label": "15L", "type": "bed_single", "berth": "lower", "pos": { "r": 15, "c": 2 } }
+            ]
+          },
+          { "row_index": 16, "seats": [
+              { "seat_id": "16U", "label": "16U", "type": "bed_single", "berth": "upper", "pos": { "r": 16, "c": 1 } },
+              { "seat_id": "16L", "label": "16L", "type": "bed_single", "berth": "lower", "pos": { "r": 16, "c": 2 } }
+            ]
+          },
+          { "row_index": 17, "seats": [
+              { "seat_id": "17U", "label": "17U", "type": "bed_single", "berth": "upper", "pos": { "r": 17, "c": 1 } },
+              { "seat_id": "17L", "label": "17L", "type": "bed_single", "berth": "lower", "pos": { "r": 17, "c": 2 } }
+            ]
+          },
+          { "row_index": 18, "seats": [
+              { "seat_id": "18U", "label": "18U", "type": "bed_single", "berth": "upper", "pos": { "r": 18, "c": 1 } },
+              { "seat_id": "18L", "label": "18L", "type": "bed_single", "berth": "lower", "pos": { "r": 18, "c": 2 } }
+            ]
+          },
+          { "row_index": 19, "seats": [
+              { "seat_id": "19U", "label": "19U", "type": "bed_single", "berth": "upper", "pos": { "r": 19, "c": 1 } },
+              { "seat_id": "19L", "label": "19L", "type": "bed_single", "berth": "lower", "pos": { "r": 19, "c": 2 } }
+            ]
+          },
+          { "row_index": 20, "seats": [
+              { "seat_id": "20U", "label": "20U", "type": "bed_single", "berth": "upper", "pos": { "r": 20, "c": 1 } },
+              { "seat_id": "20L", "label": "20L", "type": "bed_single", "berth": "lower", "pos": { "r": 20, "c": 2 } }
+            ]
+          },
+          { "row_index": 21, "seats": [
+              { "seat_id": "21U", "label": "21U", "type": "bed_single", "berth": "upper", "pos": { "r": 21, "c": 1 } },
+              { "seat_id": "21L", "label": "21L", "type": "bed_single", "berth": "lower", "pos": { "r": 21, "c": 2 } }
+            ]
+          },
+          { "row_index": 22, "seats": [
+              { "seat_id": "22U", "label": "22U", "type": "bed_single", "berth": "upper", "pos": { "r": 22, "c": 1 } },
+              { "seat_id": "22L", "label": "22L", "type": "bed_single", "berth": "lower", "pos": { "r": 22, "c": 2 } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "cabin_single",
+      "name": "Xe cabin đơn (1 khách/cabin)",
+      "seat_capacity": 20,
+      "seat_type": "cabin_single",
+      "notes": "Cabin riêng 1 người, VIP",
+      "layout": {
+        "layout_type": "vertical_list",
+        "rows": [
+          { "row_index": 1, "seats": [{ "seat_id": "C01", "label": "C01", "type": "cabin_single", "pos": { "r": 1, "c": 1 } }] },
+          { "row_index": 2, "seats": [{ "seat_id": "C02", "label": "C02", "type": "cabin_single", "pos": { "r": 2, "c": 1 } }] },
+          { "row_index": 3, "seats": [{ "seat_id": "C03", "label": "C03", "type": "cabin_single", "pos": { "r": 3, "c": 1 } }] },
+          { "row_index": 4, "seats": [{ "seat_id": "C04", "label": "C04", "type": "cabin_single", "pos": { "r": 4, "c": 1 } }] },
+          { "row_index": 5, "seats": [{ "seat_id": "C05", "label": "C05", "type": "cabin_single", "pos": { "r": 5, "c": 1 } }] },
+          { "row_index": 6, "seats": [{ "seat_id": "C06", "label": "C06", "type": "cabin_single", "pos": { "r": 6, "c": 1 } }] },
+          { "row_index": 7, "seats": [{ "seat_id": "C07", "label": "C07", "type": "cabin_single", "pos": { "r": 7, "c": 1 } }] },
+          { "row_index": 8, "seats": [{ "seat_id": "C08", "label": "C08", "type": "cabin_single", "pos": { "r": 8, "c": 1 } }] },
+          { "row_index": 9, "seats": [{ "seat_id": "C09", "label": "C09", "type": "cabin_single", "pos": { "r": 9, "c": 1 } }] },
+          { "row_index": 10, "seats": [{ "seat_id": "C10", "label": "C10", "type": "cabin_single", "pos": { "r": 10, "c": 1 } }] },
+          { "row_index": 11, "seats": [{ "seat_id": "C11", "label": "C11", "type": "cabin_single", "pos": { "r": 11, "c": 1 } }] },
+          { "row_index": 12, "seats": [{ "seat_id": "C12", "label": "C12", "type": "cabin_single", "pos": { "r": 12, "c": 1 } }] },
+          { "row_index": 13, "seats": [{ "seat_id": "C13", "label": "C13", "type": "cabin_single", "pos": { "r": 13, "c": 1 } }] },
+          { "row_index": 14, "seats": [{ "seat_id": "C14", "label": "C14", "type": "cabin_single", "pos": { "r": 14, "c": 1 } }] },
+          { "row_index": 15, "seats": [{ "seat_id": "C15", "label": "C15", "type": "cabin_single", "pos": { "r": 15, "c": 1 } }] },
+          { "row_index": 16, "seats": [{ "seat_id": "C16", "label": "C16", "type": "cabin_single", "pos": { "r": 16, "c": 1 } }] },
+          { "row_index": 17, "seats": [{ "seat_id": "C17", "label": "C17", "type": "cabin_single", "pos": { "r": 17, "c": 1 } }] },
+          { "row_index": 18, "seats": [{ "seat_id": "C18", "label": "C18", "type": "cabin_single", "pos": { "r": 18, "c": 1 } }] },
+          { "row_index": 19, "seats": [{ "seat_id": "C19", "label": "C19", "type": "cabin_single", "pos": { "r": 19, "c": 1 } }] },
+          { "row_index": 20, "seats": [{ "seat_id": "C20", "label": "C20", "type": "cabin_single", "pos": { "r": 20, "c": 1 } }] }
+        ]
+      }
+    },
+    {
+      "id": "cabin_double",
+      "name": "Xe cabin đôi (2 khách/cabin)",
+      "seat_capacity": 20,
+      "seat_type": "cabin_double",
+      "notes": "Cabin đôi cho 2 người",
+      "layout": {
+        "layout_type": "vertical_pairs",
+        "rows": [
+          { "row_index": 1, "seats": [
+              { "seat_id": "C01A", "label": "C01A", "type": "cabin_double", "pos": { "r": 1, "c": 1 }, "side": "left" },
+              { "seat_id": "C01B", "label": "C01B", "type": "cabin_double", "pos": { "r": 1, "c": 2 }, "side": "right" }
+            ]
+          },
+          { "row_index": 2, "seats": [
+              { "seat_id": "C02A", "label": "C02A", "type": "cabin_double", "pos": { "r": 2, "c": 1 }, "side": "left" },
+              { "seat_id": "C02B", "label": "C02B", "type": "cabin_double", "pos": { "r": 2, "c": 2 }, "side": "right" }
+            ]
+          },
+          { "row_index": 3, "seats": [
+              { "seat_id": "C03A", "label": "C03A", "type": "cabin_double", "pos": { "r": 3, "c": 1 }, "side": "left" },
+              { "seat_id": "C03B", "label": "C03B", "type": "cabin_double", "pos": { "r": 3, "c": 2 }, "side": "right" }
+            ]
+          },
+          { "row_index": 4, "seats": [
+              { "seat_id": "C04A", "label": "C04A", "type": "cabin_double", "pos": { "r": 4, "c": 1 }, "side": "left" },
+              { "seat_id": "C04B", "label": "C04B", "type": "cabin_double", "pos": { "r": 4, "c": 2 }, "side": "right" }
+            ]
+          },
+          { "row_index": 5, "seats": [
+              { "seat_id": "C05A", "label": "C05A", "type": "cabin_double", "pos": { "r": 5, "c": 1 }, "side": "left" },
+              { "seat_id": "C05B", "label": "C05B", "type": "cabin_double", "pos": { "r": 5, "c": 2 }, "side": "right" }
+            ]
+          },
+          { "row_index": 6, "seats": [
+              { "seat_id": "C06A", "label": "C06A", "type": "cabin_double", "pos": { "r": 6, "c": 1 }, "side": "left" },
+              { "seat_id": "C06B", "label": "C06B", "type": "cabin_double", "pos": { "r": 6, "c": 2 }, "side": "right" }
+            ]
+          },
+          { "row_index": 7, "seats": [
+              { "seat_id": "C07A", "label": "C07A", "type": "cabin_double", "pos": { "r": 7, "c": 1 }, "side": "left" },
+              { "seat_id": "C07B", "label": "C07B", "type": "cabin_double", "pos": { "r": 7, "c": 2 }, "side": "right" }
+            ]
+          },
+          { "row_index": 8, "seats": [
+              { "seat_id": "C08A", "label": "C08A", "type": "cabin_double", "pos": { "r": 8, "c": 1 }, "side": "left" },
+              { "seat_id": "C08B", "label": "C08B", "type": "cabin_double", "pos": { "r": 8, "c": 2 }, "side": "right" }
+            ]
+          },
+          { "row_index": 9, "seats": [
+              { "seat_id": "C09A", "label": "C09A", "type": "cabin_double", "pos": { "r": 9, "c": 1 }, "side": "left" },
+              { "seat_id": "C09B", "label": "C09B", "type": "cabin_double", "pos": { "r": 9, "c": 2 }, "side": "right" }
+            ]
+          },
+          { "row_index": 10, "seats": [
+              { "seat_id": "C10A", "label": "C10A", "type": "cabin_double", "pos": { "r": 10, "c": 1 }, "side": "left" },
+              { "seat_id": "C10B", "label": "C10B", "type": "cabin_double", "pos": { "r": 10, "c": 2 }, "side": "right" }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
