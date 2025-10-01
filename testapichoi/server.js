@@ -5,6 +5,101 @@ const cors = require('cors')
 const path = require('path') // <-- existing
 const fs = require('fs') // <-- added
 
+// --- New: mongoose for DB CRUD ---
+const mongoose = require('mongoose');
+
+// Use provided connection string (or override with env var)
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ngophuc2911_db_user:phuc29112003@cluster0.xrujamk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+}).then(() => {
+  console.log('Connected to MongoDB');
+}).catch(err => {
+  console.error('MongoDB connection error:', err);
+});
+
+// Replace previous BusSchema definition with improved schema + validations
+const SeatSchema = new mongoose.Schema({
+  seatId: { type: String, required: true },
+  label: String,
+  type: String,
+  pos: {
+    r: Number,
+    c: Number
+  },
+  status: { type: String, enum: ['available', 'booked', 'blocked'], default: 'available' }
+}, { _id: false });
+
+const BusSchema = new mongoose.Schema({
+  busCode: { type: String, required: true, index: true }, // consider unique if needed
+  operatorId: { type: String, default: null }, // accept operatorId from client
+  operator: {
+    id: String, name: String, logo: String, code: String
+  },
+  routeFrom: { code: String, name: String, city: String },
+  routeTo: { code: String, name: String, city: String },
+  departureAt: { type: Date, required: false },
+  arrivalAt: { type: Date, required: false },
+  duration: String,
+  busType: [String],
+  price: { type: Number, min: 0 },
+  seatsTotal: { type: Number, min: 0, default: 0 },
+  seatsAvailable: { type: Number, min: 0, default: 0 },
+  // seatMap stored as array of seat objects with status
+  seatMap: { type: [SeatSchema], default: [] },
+  status: { type: String, enum: ["scheduled", "cancelled", "delayed", "completed"], default: "scheduled" },
+  amenities: String,
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+}, { collection: 'buses' });
+
+// Validate logical consistency before saving
+BusSchema.pre('validate', function (next) {
+  try {
+    // Ensure arrival is after departure when both provided
+    if (this.departureAt && this.arrivalAt) {
+      if (new Date(this.arrivalAt) <= new Date(this.departureAt)) {
+        return next(new Error('arrivalAt must be after departureAt'));
+      }
+    }
+
+    // If seatMap provided, derive seatsTotal and seatsAvailable from it
+    if (Array.isArray(this.seatMap) && this.seatMap.length > 0) {
+      const totalFromMap = this.seatMap.length;
+      const booked = this.seatMap.filter(s => s.status === 'booked').length;
+      // normalize seatsTotal to the map length to avoid mismatch
+      this.seatsTotal = totalFromMap;
+      // if seatsAvailable explicitly provided, clamp it; otherwise compute from map
+      if (typeof this.seatsAvailable === 'number') {
+        this.seatsAvailable = Math.min(Math.max(0, this.seatsAvailable), this.seatsTotal);
+      } else {
+        this.seatsAvailable = Math.max(0, this.seatsTotal - booked);
+      }
+    } else {
+      // No seatMap: ensure seatsTotal/seatsAvailable are sensible numbers
+      if (typeof this.seatsTotal !== 'number' || this.seatsTotal < 0) this.seatsTotal = 0;
+      if (typeof this.seatsAvailable !== 'number' || this.seatsAvailable < 0) this.seatsAvailable = Math.max(0, this.seatsTotal);
+      if (this.seatsAvailable > this.seatsTotal) this.seatsAvailable = this.seatsTotal;
+    }
+
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// Keep updatedAt on save
+BusSchema.pre('save', function (next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+const Bus = mongoose.model('Bus', BusSchema);
+
+// --- New: JSON body parsing middleware ---
+app.use(express.json());
 app.use(cors())
 
 app.get('/', (req, res) => {
@@ -476,11 +571,12 @@ app.get('/bus/loaixe', (req, res) => {
     }
     try {
       const parsed = JSON.parse(data);
-      const list = parsed.vehicle_types || parsed;
+      // prefer vehicle_categories key used in dsloaixevexere.json
+      const list = parsed.vehicle_categories || parsed.vehicle_types || parsed;
       if (Array.isArray(list)) {
-        console.log(`loaixe: vehicle_types length = ${list.length}`);
+        console.log(`loaixe: vehicle_categories length = ${list.length}`);
       } else {
-        console.log('loaixe: parsed but vehicle_types not an array');
+        console.log('loaixe: parsed but vehicle_categories not an array');
       }
       return res.json(list);
     } catch (e) {
@@ -501,7 +597,8 @@ app.get('/bus/loaixe/:id', (req, res) => {
     }
     try {
       const parsed = JSON.parse(data);
-      const list = parsed.vehicle_types || [];
+      // prefer vehicle_categories key
+      const list = parsed.vehicle_categories || parsed.vehicle_types || [];
       const item = list.find(v => v.id === id);
       if (!item) {
         return res.status(404).json({ error: 'Vehicle type not found' });
@@ -512,6 +609,235 @@ app.get('/bus/loaixe/:id', (req, res) => {
       return res.status(500).json({ error: 'Failed to parse JSON' });
     }
   });
+});
+
+// --- New API: CRUD for buses ---
+// List with pagination & filters: GET /api/buses
+app.get('/api/buses', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.max(1, parseInt(req.query.pageSize) || 10);
+    const search = req.query.search ? String(req.query.search).trim() : '';
+    const operator = req.query.operator ? String(req.query.operator) : 'all';
+    const status = req.query.status ? String(req.query.status) : 'all';
+    const route = req.query.route ? String(req.query.route) : 'all';
+
+    const filter = {};
+    if (search) {
+      const re = new RegExp(search, 'i');
+      filter.$or = [
+        { busCode: re },
+        { 'operator.name': re },
+        { 'routeFrom.city': re },
+        { 'routeTo.city': re },
+      ];
+    }
+    if (operator && operator !== 'all') {
+      filter['operator.id'] = operator;
+    }
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+    if (route && route !== 'all') {
+      // route param format example: "SGN_MB-DAD_BX" or partial
+      filter.$or = filter.$or || [];
+      const re = new RegExp(route, 'i');
+      filter.$or.push({ 'routeFrom.code': re }, { 'routeTo.code': re });
+    }
+
+    const total = await Bus.countDocuments(filter);
+    const buses = await Bus.find(filter)
+      .sort({ departureAt: 1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+
+    return res.json({
+      data: buses,
+      pagination: { total, current: page, pageSize }
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Failed to fetch buses' });
+  }
+});
+
+// Get single bus
+app.get('/api/buses/:id', async (req, res) => {
+  try {
+    const bus = await Bus.findById(req.params.id).lean();
+    if (!bus) return res.status(404).json({ error: 'Bus not found' });
+    return res.json(bus);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Failed to fetch bus' });
+  }
+});
+
+// Create bus
+app.post('/api/buses', async (req, res) => {
+  try {
+    const payload = req.body;
+    // ensure seatsAvailable < seatsTotal if seatMap provided
+    if (Array.isArray(payload.seatMap) && typeof payload.seatsTotal === 'number') {
+      const totalSeatsFromMap = payload.seatMap.length;
+      // normalize seatsTotal if inconsistent
+      if (!payload.seatsTotal || payload.seatsTotal !== totalSeatsFromMap) {
+        payload.seatsTotal = totalSeatsFromMap;
+      }
+      // compute seatsAvailable if not provided
+      if (typeof payload.seatsAvailable !== 'number') {
+        const booked = payload.seatMap.filter(s => s.status === 'booked').length;
+        payload.seatsAvailable = Math.max(0, payload.seatsTotal - booked);
+      } else {
+        // ensure seatsAvailable is not >= seatsTotal
+        payload.seatsAvailable = Math.min(payload.seatsAvailable, Math.max(0, payload.seatsTotal - 1));
+      }
+    }
+    const bus = new Bus(payload);
+    await bus.save();
+    return res.status(201).json(bus);
+  } catch (err) {
+    console.error(err);
+    return res.status(400).json({ error: 'Failed to create bus', details: err.message });
+  }
+});
+
+// Update bus
+app.put('/api/buses/:id', async (req, res) => {
+  try {
+    const payload = req.body;
+    payload.updatedAt = new Date();
+    const bus = await Bus.findByIdAndUpdate(req.params.id, payload, { new: true, runValidators: true }).lean();
+    if (!bus) return res.status(404).json({ error: 'Bus not found' });
+    return res.json(bus);
+  } catch (err) {
+    console.error(err);
+    return res.status(400).json({ error: 'Failed to update bus', details: err.message });
+  }
+});
+
+// Delete bus
+app.delete('/api/buses/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let removed = null;
+
+    // if id looks like a Mongo ObjectId try deleting by _id first
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      removed = await Bus.findByIdAndDelete(id).lean();
+    }
+
+    // if not found (or id not an ObjectId), try deleting by busCode or custom id field
+    if (!removed) {
+      removed = await Bus.findOneAndDelete({ $or: [{ busCode: id }, { id: id }] }).lean();
+    }
+
+    if (!removed) return res.status(404).json({ error: 'Bus not found' });
+
+    return res.json({ success: true, id: removed._id || removed.id || id });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Failed to delete bus', details: err.message });
+  }
+});
+
+// Bulk actions: POST /api/buses/bulk  { action: 'delete'|'activate'|'cancel', ids: [] }
+app.post('/api/buses/bulk', async (req, res) => {
+  try {
+    const { action, ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'ids array required' });
+    }
+
+    if (action === 'delete') {
+      // split ids into valid ObjectIds and non-object strings
+      const objectIds = ids.filter(i => mongoose.Types.ObjectId.isValid(i)).map(i => mongoose.Types.ObjectId(i));
+      const stringIds = ids.filter(i => !mongoose.Types.ObjectId.isValid(i));
+
+      const orClauses = [];
+      if (objectIds.length) orClauses.push({ _id: { $in: objectIds } });
+      if (stringIds.length) {
+        orClauses.push({ busCode: { $in: stringIds } });
+        orClauses.push({ id: { $in: stringIds } });
+      }
+
+      if (orClauses.length === 0) {
+        return res.status(400).json({ error: 'No valid ids provided' });
+      }
+
+      await Bus.deleteMany({ $or: orClauses });
+      return res.json({ success: true });
+    } else if (action === 'activate' || action === 'cancel') {
+      // normalize ids for updateMany: use _id when possible, otherwise match busCode/id
+      const objectIds = ids.filter(i => mongoose.Types.ObjectId.isValid(i)).map(i => mongoose.Types.ObjectId(i));
+      const stringIds = ids.filter(i => !mongoose.Types.ObjectId.isValid(i));
+
+      const updateFilter = { $or: [] };
+      if (objectIds.length) updateFilter.$or.push({ _id: { $in: objectIds } });
+      if (stringIds.length) {
+        updateFilter.$or.push({ busCode: { $in: stringIds } });
+        updateFilter.$or.push({ id: { $in: stringIds } });
+      }
+
+      const status = action === 'activate' ? 'scheduled' : 'cancelled';
+      await Bus.updateMany(updateFilter, { $set: { status, updatedAt: new Date() } });
+      return res.json({ success: true });
+    } else {
+      return res.status(400).json({ error: 'Unknown action' });
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Bulk action failed', details: err.message });
+  }
+});
+
+// New endpoint: add fake bookings (mark available seats as booked)
+// POST /api/buses/:id/fake_bookings  body: { count: 1 }
+app.post('/api/buses/:id/fake_bookings', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const count = Math.max(1, parseInt(req.body.count) || 1);
+    const bus = await Bus.findById(id);
+    if (!bus) return res.status(404).json({ error: 'Bus not found' });
+
+    if (!Array.isArray(bus.seatMap) || bus.seatMap.length === 0) {
+      return res.status(400).json({ error: 'No seat map available for this bus' });
+    }
+
+    // find available seats
+    const availableSeatsIdx = [];
+    for (let i = 0; i < bus.seatMap.length; i++) {
+      const s = bus.seatMap[i];
+      if (!s.status || s.status === 'available') availableSeatsIdx.push(i);
+    }
+    if (availableSeatsIdx.length === 0) {
+      return res.status(400).json({ error: 'No available seats left to book' });
+    }
+
+    // decide how many to book
+    const toBook = Math.min(count, availableSeatsIdx.length);
+    // simple shuffle
+    for (let i = availableSeatsIdx.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [availableSeatsIdx[i], availableSeatsIdx[j]] = [availableSeatsIdx[j], availableSeatsIdx[i]];
+    }
+
+    for (let k = 0; k < toBook; k++) {
+      const idx = availableSeatsIdx[k];
+      bus.seatMap[idx].status = 'booked';
+    }
+    // update seatsAvailable
+    const bookedNow = bus.seatMap.filter(s => s.status === 'booked').length;
+    bus.seatsTotal = bus.seatMap.length;
+    bus.seatsAvailable = Math.max(0, bus.seatsTotal - bookedNow);
+    bus.updatedAt = new Date();
+    await bus.save();
+    return res.json(bus);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Failed to create fake bookings', details: err.message });
+  }
 });
 
 app.listen(port, () => {
