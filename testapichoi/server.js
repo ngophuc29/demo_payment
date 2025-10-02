@@ -41,6 +41,10 @@ const BusSchema = new mongoose.Schema({
   routeFrom: { code: String, name: String, city: String },
   routeTo: { code: String, name: String, city: String },
   departureAt: { type: Date, required: false },
+  // new: multiple departure dates
+  departureDates: { type: [Date], default: [] },
+  // new: multiple arrival dates (paired by index with departureDates)
+  arrivalDates: { type: [Date], default: [] },
   arrivalAt: { type: Date, required: false },
   duration: String,
   busType: [String],
@@ -58,10 +62,46 @@ const BusSchema = new mongoose.Schema({
 // Validate logical consistency before saving
 BusSchema.pre('validate', function (next) {
   try {
-    // Ensure arrival is after departure when both provided
-    if (this.departureAt && this.arrivalAt) {
-      if (new Date(this.arrivalAt) <= new Date(this.departureAt)) {
-        return next(new Error('arrivalAt must be after departureAt'));
+    // Normalize departureDates: ensure array of valid Dates
+    if (Array.isArray(this.departureDates) && this.departureDates.length > 0) {
+      const parsed = this.departureDates.map(d => new Date(d));
+      // remove invalid ones
+      const valid = parsed.filter(d => !isNaN(d.getTime()));
+      this.departureDates = valid;
+      // set departureAt to earliest date for backward compat
+      if (!this.departureAt && valid.length) {
+        const earliest = valid.reduce((a, b) => a < b ? a : b);
+        this.departureAt = earliest;
+      } else if (valid.length) {
+        // ensure departureAt is at least set to earliest to be consistent
+        const earliest = valid.reduce((a, b) => a < b ? a : b);
+        if (!this.departureAt || new Date(this.departureAt) > earliest) {
+          this.departureAt = earliest;
+        }
+      }
+    }
+
+    // Normalize arrivalDates: ensure array of valid Dates and set arrivalAt to earliest (or first) if not set
+    if (Array.isArray(this.arrivalDates) && this.arrivalDates.length > 0) {
+      const parsedArr = this.arrivalDates.map(d => new Date(d)).filter(d => !isNaN(d.getTime()));
+      this.arrivalDates = parsedArr;
+      if (!this.arrivalAt && parsedArr.length) {
+        this.arrivalAt = parsedArr[0];
+      }
+    }
+
+    // Ensure arrival is after departure when both provided:
+    if (this.arrivalAt) {
+      // if there are departureDates, ensure arrival > earliest departure
+      if (Array.isArray(this.departureDates) && this.departureDates.length > 0) {
+        const earliest = this.departureDates.reduce((a, b) => (a < b ? a : b));
+        if (new Date(this.arrivalAt) <= new Date(earliest)) {
+          return next(new Error('arrivalAt must be after earliest departure date'));
+        }
+      } else if (this.departureAt) {
+        if (new Date(this.arrivalAt) <= new Date(this.departureAt)) {
+          return next(new Error('arrivalAt must be after departureAt'));
+        }
       }
     }
 
@@ -69,7 +109,6 @@ BusSchema.pre('validate', function (next) {
     if (Array.isArray(this.seatMap) && this.seatMap.length > 0) {
       const totalFromMap = this.seatMap.length;
       const booked = this.seatMap.filter(s => s.status === 'booked').length;
-      // normalize seatsTotal to the map length to avoid mismatch
       this.seatsTotal = totalFromMap;
       // if seatsAvailable explicitly provided, clamp it; otherwise compute from map
       if (typeof this.seatsAvailable === 'number') {
@@ -677,28 +716,106 @@ app.get('/api/buses/:id', async (req, res) => {
 // Create bus
 app.post('/api/buses', async (req, res) => {
   try {
-    const payload = req.body;
-    // ensure seatsAvailable < seatsTotal if seatMap provided
-    if (Array.isArray(payload.seatMap) && typeof payload.seatsTotal === 'number') {
-      const totalSeatsFromMap = payload.seatMap.length;
-      // normalize seatsTotal if inconsistent
-      if (!payload.seatsTotal || payload.seatsTotal !== totalSeatsFromMap) {
-        payload.seatsTotal = totalSeatsFromMap;
+    const payload = req.body || {};
+
+    // Normalize departureDates -> array of valid Dates and set departureAt (earliest) for backward compat
+    if (Array.isArray(payload.departureDates) && payload.departureDates.length) {
+      payload.departureDates = payload.departureDates
+        .map(d => new Date(d))
+        .filter(d => !isNaN(d.getTime()))
+        .sort((a, b) => a.getTime() - b.getTime());
+      if (payload.departureDates.length) {
+        payload.departureAt = payload.departureAt ? new Date(payload.departureAt) : payload.departureDates[0];
       }
-      // compute seatsAvailable if not provided
-      if (typeof payload.seatsAvailable !== 'number') {
-        const booked = payload.seatMap.filter(s => s.status === 'booked').length;
-        payload.seatsAvailable = Math.max(0, payload.seatsTotal - booked);
+    } else if (payload.departureAt) {
+      const dt = new Date(payload.departureAt);
+      if (!isNaN(dt.getTime())) {
+        payload.departureAt = dt;
+        payload.departureDates = [dt];
       } else {
-        // ensure seatsAvailable is not >= seatsTotal
-        payload.seatsAvailable = Math.min(payload.seatsAvailable, Math.max(0, payload.seatsTotal - 1));
+        payload.departureDates = [];
+      }
+    } else {
+      payload.departureDates = [];
+    }
+
+    // Normalize arrivalDates -> array of valid Dates and set arrivalAt (first) for backward compat
+    if (Array.isArray(payload.arrivalDates) && payload.arrivalDates.length) {
+      payload.arrivalDates = payload.arrivalDates
+        .map(d => new Date(d))
+        .filter(d => !isNaN(d.getTime()));
+      if (payload.arrivalDates.length) {
+        payload.arrivalAt = payload.arrivalAt ? new Date(payload.arrivalAt) : payload.arrivalDates[0];
+      }
+    } else if (payload.arrivalAt) {
+      const at = new Date(payload.arrivalAt);
+      if (!isNaN(at.getTime())) {
+        payload.arrivalAt = at;
+        payload.arrivalDates = [at];
+      } else {
+        payload.arrivalDates = [];
+      }
+    } else {
+      payload.arrivalDates = [];
+    }
+
+    // Compute duration from the first departure/arrival pair (if available)
+    if (payload.departureDates.length && payload.arrivalDates.length) {
+      const dep = new Date(payload.departureDates[0]);
+      const arr = new Date(payload.arrivalDates[0]);
+      if (!isNaN(dep.getTime()) && !isNaN(arr.getTime()) && arr.getTime() > dep.getTime()) {
+        const diffMs = arr.getTime() - dep.getTime();
+        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        payload.duration = `${hours}h ${minutes}m`;
+      }
+    } else if (payload.departureAt && payload.arrivalAt) {
+      const dep = new Date(payload.departureAt);
+      const arr = new Date(payload.arrivalAt);
+      if (!isNaN(dep.getTime()) && !isNaN(arr.getTime()) && arr.getTime() > dep.getTime()) {
+        const diffMs = arr.getTime() - dep.getTime();
+        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        payload.duration = `${hours}h ${minutes}m`;
       }
     }
+
+    // seatsTotal / seatsAvailable sanitization
+    payload.seatsTotal = Number.isFinite(Number(payload.seatsTotal)) ? Number(payload.seatsTotal) : 0;
+    payload.seatsAvailable = typeof payload.seatsAvailable === 'number'
+      ? payload.seatsAvailable
+      : (Number.isFinite(Number(payload.seatsAvailable)) ? Number(payload.seatsAvailable) : payload.seatsTotal);
+
+    if (payload.seatsAvailable < 0) payload.seatsAvailable = 0;
+    if (payload.seatsAvailable > payload.seatsTotal) payload.seatsAvailable = payload.seatsTotal;
+
+    // Normalize seatMap items (ensure seatId and allowed status values), derive seatsTotal/seatsAvailable when seatMap provided
+    if (Array.isArray(payload.seatMap) && payload.seatMap.length) {
+      payload.seatMap = payload.seatMap.map(s => ({
+        seatId: s.seatId || s.id || '',
+        label: s.label || s.seatId || '',
+        type: s.type || 'seat',
+        pos: (s.pos && typeof s.pos === 'object') ? { r: s.pos.r || null, c: s.pos.c || null } : undefined,
+        status: (s.status === 'booked' || s.status === 'blocked') ? s.status : 'available'
+      }));
+
+      // derive totals from seatMap unless user explicitly provided seatsTotal/seatsAvailable (we prioritize seatMap)
+      const totalFromMap = payload.seatMap.length;
+      const bookedFromMap = payload.seatMap.filter(s => s.status === 'booked').length;
+      payload.seatsTotal = totalFromMap;
+      if (typeof req.body.seatsAvailable === 'number') {
+        payload.seatsAvailable = Math.min(Math.max(0, payload.seatsAvailable), payload.seatsTotal);
+      } else {
+        payload.seatsAvailable = Math.max(0, payload.seatsTotal - bookedFromMap);
+      }
+    }
+
+    // Create and save
     const bus = new Bus(payload);
     await bus.save();
     return res.status(201).json(bus);
   } catch (err) {
-    console.error(err);
+    console.error('POST /api/buses error:', err);
     return res.status(400).json({ error: 'Failed to create bus', details: err.message });
   }
 });
@@ -707,6 +824,30 @@ app.post('/api/buses', async (req, res) => {
 app.put('/api/buses/:id', async (req, res) => {
   try {
     const payload = req.body;
+
+    // Normalize departureDates/arrivalAt similar to create
+    if (Array.isArray(payload.departureDates)) {
+      payload.departureDates = payload.departureDates.map(d => new Date(d)).filter(d => !isNaN(d.getTime()));
+      if (payload.departureDates.length) {
+        payload.departureAt = payload.departureDates[0];
+      }
+    } else if (payload.departureAt) {
+      payload.departureAt = new Date(payload.departureAt);
+      if (!Array.isArray(payload.departureDates)) payload.departureDates = [payload.departureAt];
+    }
+
+    if (payload.arrivalAt) payload.arrivalAt = new Date(payload.arrivalAt);
+
+    // compute duration when both departureAt and arrivalAt available
+    if (payload.departureAt && payload.arrivalAt) {
+      const diffMs = new Date(payload.arrivalAt).getTime() - new Date(payload.departureAt).getTime();
+      if (diffMs > 0) {
+        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        payload.duration = `${hours}h ${minutes}m`;
+      }
+    }
+
     payload.updatedAt = new Date();
     const bus = await Bus.findByIdAndUpdate(req.params.id, payload, { new: true, runValidators: true }).lean();
     if (!bus) return res.status(404).json({ error: 'Bus not found' });
