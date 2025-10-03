@@ -11,14 +11,26 @@ const mongoose = require('mongoose');
 // Use provided connection string (or override with env var)
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ngophuc2911_db_user:phuc29112003@cluster0.xrujamk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-}).then(() => {
-  console.log('Connected to MongoDB');
-}).catch(err => {
-  console.error('MongoDB connection error:', err);
-});
+// --- New: initialize DB then start server to avoid mongoose buffering timeouts ---
+(async function init() {
+  try {
+    await mongoose.connect(MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 10000 // fail fast if cannot reach DB
+    });
+    console.log('Connected to MongoDB');
+
+    // start server only after successful DB connection
+    app.listen(port, () => {
+      console.log(`Example app listening on port ${port}`);
+    });
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    // Exit so the process doesn't accept requests while DB unavailable
+    process.exit(1);
+  }
+})();
 
 // Replace previous BusSchema definition with improved schema + validations
 const SeatSchema = new mongoose.Schema({
@@ -981,6 +993,140 @@ app.post('/api/buses/:id/fake_bookings', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
+// New: client-facing list endpoint for /api/client/buses
+app.get('/api/client/buses', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.max(1, parseInt(req.query.pageSize) || 10);
+    const from = req.query.from ? String(req.query.from).trim() : '';
+    const to = req.query.to ? String(req.query.to).trim() : '';
+    const departure = req.query.departure ? String(req.query.departure).trim() : '';
+    const operator = req.query.operator ? String(req.query.operator).trim() : '';
+    const status = req.query.status ? String(req.query.status).trim() : '';
+
+    const filter = {};
+
+    // from / to filtering: try to match code / city / name (case-insensitive, partial)
+    if (from) {
+      const re = new RegExp(from, 'i');
+      filter.$and = filter.$and || [];
+      filter.$and.push({
+        $or: [
+          { 'routeFrom.code': re },
+          { 'routeFrom.city': re },
+          { 'routeFrom.name': re },
+          { 'routeFrom.id': re }
+        ]
+      });
+    }
+    if (to) {
+      const re = new RegExp(to, 'i');
+      filter.$and = filter.$and || [];
+      filter.$and.push({
+        $or: [
+          { 'routeTo.code': re },
+          { 'routeTo.city': re },
+          { 'routeTo.name': re },
+          { 'routeTo.id': re }
+        ]
+      });
+    }
+
+    if (operator) {
+      filter['operator.id'] = operator;
+    }
+    if (status) {
+      filter.status = status;
+    }
+
+    // departure: match any departureDate or departureAt inside the same day
+    let depStart, depEnd;
+    if (departure) {
+      const d = new Date(departure);
+      if (!isNaN(d.getTime())) {
+        depStart = new Date(d);
+        depStart.setHours(0, 0, 0, 0);
+        depEnd = new Date(depStart);
+        depEnd.setDate(depEnd.getDate() + 1);
+        // match either departureAt in day OR at least one element in departureDates in day
+        filter.$and = filter.$and || [];
+        filter.$and.push({
+          $or: [
+            { departureAt: { $gte: depStart, $lt: depEnd } },
+            { departureDates: { $elemMatch: { $gte: depStart, $lt: depEnd } } }
+          ]
+        });
+      }
+    }
+
+    // Debug log to help diagnose why nothing matched
+    console.log('GET /api/client/buses - filter:', JSON.stringify(filter));
+    if (depStart && depEnd) {
+      console.log('departure range:', depStart.toISOString(), depEnd.toISOString());
+    }
+
+    // count and fetch with projection suitable for client listing
+    let total = await Bus.countDocuments(filter);
+    let buses = await Bus.find(filter)
+      .sort({ departureAt: 1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .select('busCode operator routeFrom routeTo departureAt departureDates arrivalAt arrivalDates price seatsAvailable seatsTotal duration busType status amenities seatMap')
+      .lean();
+
+    // If strict filter returned nothing but user provided from/to, try a relaxed fallback:
+    if ((Array.isArray(buses) && buses.length === 0) && (from || to)) {
+      const relaxedAnd = [];
+      if (from) {
+        const reFrom = new RegExp(from, 'i');
+        relaxedAnd.push({
+          $or: [
+            { 'routeFrom.code': reFrom }, { 'routeFrom.city': reFrom }, { 'routeFrom.name': reFrom },
+            { 'routeTo.code': reFrom }, { 'routeTo.city': reFrom }, { 'routeTo.name': reFrom }
+          ]
+        });
+      }
+      if (to) {
+        const reTo = new RegExp(to, 'i');
+        relaxedAnd.push({
+          $or: [
+            { 'routeTo.code': reTo }, { 'routeTo.city': reTo }, { 'routeTo.name': reTo },
+            { 'routeFrom.code': reTo }, { 'routeFrom.city': reTo }, { 'routeFrom.name': reTo }
+          ]
+        });
+      }
+      if (depStart && depEnd) {
+        relaxedAnd.push({
+          $or: [
+            { departureAt: { $gte: depStart, $lt: depEnd } },
+            { departureDates: { $elemMatch: { $gte: depStart, $lt: depEnd } } }
+          ]
+        });
+      }
+      const relaxedFilter = relaxedAnd.length ? { $and: relaxedAnd } : {};
+      console.log('relaxed fallback filter:', JSON.stringify(relaxedFilter));
+      total = await Bus.countDocuments(relaxedFilter);
+      buses = await Bus.find(relaxedFilter)
+        .sort({ departureAt: 1 })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+        .select('busCode operator routeFrom routeTo departureAt departureDates arrivalAt arrivalDates price seatsAvailable seatsTotal duration busType status amenities seatMap')
+        .lean();
+
+      // mark response so client knows a relaxed search was used
+      return res.json({
+        data: buses,
+        pagination: { total, current: page, pageSize },
+        relaxed: true
+      });
+    }
+
+    return res.json({
+      data: buses,
+      pagination: { total, current: page, pageSize }
+    });
+  } catch (err) {
+    console.error('GET /api/client/buses error:', err);
+    return res.status(500).json({ error: 'Failed to fetch client buses', details: err.message });
+  }
+});
