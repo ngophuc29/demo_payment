@@ -66,7 +66,8 @@ const BusSchema = new mongoose.Schema({
   // seatMap stored as array of seat objects with status
   seatMap: { type: [SeatSchema], default: [] },
   status: { type: String, enum: ["scheduled", "cancelled", "delayed", "completed"], default: "scheduled" },
-  amenities: String,
+  // change amenities from String -> array of strings
+  amenities: { type: [String], default: [] },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 }, { collection: 'buses' });
@@ -133,6 +134,14 @@ BusSchema.pre('validate', function (next) {
       if (typeof this.seatsTotal !== 'number' || this.seatsTotal < 0) this.seatsTotal = 0;
       if (typeof this.seatsAvailable !== 'number' || this.seatsAvailable < 0) this.seatsAvailable = Math.max(0, this.seatsTotal);
       if (this.seatsAvailable > this.seatsTotal) this.seatsAvailable = this.seatsTotal;
+    }
+
+    // Normalize amenities stored as comma-separated string into array
+    if (typeof this.amenities === 'string') {
+      this.amenities = this.amenities.split(',').map(s => String(s).trim()).filter(Boolean);
+    }
+    if (!Array.isArray(this.amenities)) {
+      this.amenities = [];
     }
 
     return next();
@@ -697,11 +706,18 @@ app.get('/api/buses', async (req, res) => {
     }
 
     const total = await Bus.countDocuments(filter);
-    const buses = await Bus.find(filter)
+    let buses = await Bus.find(filter)
       .sort({ departureAt: 1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean();
+
+    // normalize amenities on each bus for consistent API shape
+    buses = buses.map(b => {
+      if (typeof b.amenities === 'string') b.amenities = b.amenities.split(',').map((s) => s.trim()).filter(Boolean);
+      if (!Array.isArray(b.amenities)) b.amenities = [];
+      return b;
+    });
 
     return res.json({
       data: buses,
@@ -718,6 +734,14 @@ app.get('/api/buses/:id', async (req, res) => {
   try {
     const bus = await Bus.findById(req.params.id).lean();
     if (!bus) return res.status(404).json({ error: 'Bus not found' });
+
+    // normalize amenities before sending
+    if (typeof bus.amenities === 'string') {
+      bus.amenities = bus.amenities.split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (!Array.isArray(bus.amenities)) {
+      bus.amenities = [];
+    }
+
     return res.json(bus);
   } catch (err) {
     console.error(err);
@@ -822,6 +846,15 @@ app.post('/api/buses', async (req, res) => {
       }
     }
 
+    // Normalize amenities: accept string or array, store array
+    if (typeof payload.amenities === 'string') {
+      payload.amenities = payload.amenities.split(',').map((s) => String(s).trim()).filter(Boolean);
+    } else if (!Array.isArray(payload.amenities)) {
+      payload.amenities = [];
+    } else {
+      payload.amenities = payload.amenities.map((s) => String(s).trim()).filter(Boolean);
+    }
+
     // Create and save
     const bus = new Bus(payload);
     await bus.save();
@@ -860,9 +893,22 @@ app.put('/api/buses/:id', async (req, res) => {
       }
     }
 
+    // Normalize amenities for update payload
+    if (payload && typeof payload.amenities === 'string') {
+      payload.amenities = payload.amenities.split(',').map((s) => String(s).trim()).filter(Boolean);
+    } else if (payload && Array.isArray(payload.amenities)) {
+      payload.amenities = payload.amenities.map((s) => String(s).trim()).filter(Boolean);
+    }
+
     payload.updatedAt = new Date();
     const bus = await Bus.findByIdAndUpdate(req.params.id, payload, { new: true, runValidators: true }).lean();
     if (!bus) return res.status(404).json({ error: 'Bus not found' });
+
+    // ensure response amenities is always an array (handle old docs)
+    if (bus && typeof bus.amenities === 'string') {
+      bus.amenities = bus.amenities.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
     return res.json(bus);
   } catch (err) {
     console.error(err);
@@ -1006,30 +1052,39 @@ app.get('/api/client/buses', async (req, res) => {
 
     const filter = {};
 
+    // small helper to escape user input for Regex
+    const escapeRegex = (s = '') => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
     // from / to filtering: try to match code / city / name (case-insensitive, partial)
     if (from) {
-      const re = new RegExp(from, 'i');
+      const re = new RegExp(escapeRegex(from), 'i');
+      const numFrom = Number(from);
+      const fromOr = [
+        { 'routeFrom.code': re },
+        { 'routeFrom.city': re },
+        { 'routeFrom.name': re },
+        { 'routeFrom.id': re },
+        // exact matches (cover numeric-typed fields too)
+        { 'routeFrom.code': from }
+      ];
+      if (!Number.isNaN(numFrom)) fromOr.push({ 'routeFrom.code': numFrom });
       filter.$and = filter.$and || [];
-      filter.$and.push({
-        $or: [
-          { 'routeFrom.code': re },
-          { 'routeFrom.city': re },
-          { 'routeFrom.name': re },
-          { 'routeFrom.id': re }
-        ]
-      });
+      filter.$and.push({ $or: fromOr });
     }
+
     if (to) {
-      const re = new RegExp(to, 'i');
+      const re = new RegExp(escapeRegex(to), 'i');
+      const numTo = Number(to);
+      const toOr = [
+        { 'routeTo.code': re },
+        { 'routeTo.city': re },
+        { 'routeTo.name': re },
+        { 'routeTo.id': re },
+        { 'routeTo.code': to }
+      ];
+      if (!Number.isNaN(numTo)) toOr.push({ 'routeTo.code': numTo });
       filter.$and = filter.$and || [];
-      filter.$and.push({
-        $or: [
-          { 'routeTo.code': re },
-          { 'routeTo.city': re },
-          { 'routeTo.name': re },
-          { 'routeTo.id': re }
-        ]
-      });
+      filter.$and.push({ $or: toOr });
     }
 
     if (operator) {
@@ -1042,13 +1097,20 @@ app.get('/api/client/buses', async (req, res) => {
     // departure: match any departureDate or departureAt inside the same day
     let depStart, depEnd;
     if (departure) {
-      const d = new Date(departure);
-      if (!isNaN(d.getTime())) {
-        depStart = new Date(d);
-        depStart.setHours(0, 0, 0, 0);
+      // Try to parse as YYYY-MM-DD robustly (create UTC day range)
+      let dt = null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(departure)) {
+        // treat as date-only in UTC to avoid local TZ shifts
+        dt = new Date(departure + 'T00:00:00Z');
+      } else {
+        dt = new Date(departure);
+      }
+      if (!isNaN(dt.getTime())) {
+        // normalize to UTC day boundaries
+        depStart = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate(), 0, 0, 0, 0));
         depEnd = new Date(depStart);
-        depEnd.setDate(depEnd.getDate() + 1);
-        // match either departureAt in day OR at least one element in departureDates in day
+        depEnd.setUTCDate(depEnd.getUTCDate() + 1);
+
         filter.$and = filter.$and || [];
         filter.$and.push({
           $or: [
@@ -1059,10 +1121,11 @@ app.get('/api/client/buses', async (req, res) => {
       }
     }
 
-    // Debug log to help diagnose why nothing matched
-    console.log('GET /api/client/buses - filter:', JSON.stringify(filter));
+    // safer logging: convert Date -> ISO string for readable logs
+    const safeStringify = (obj) => JSON.stringify(obj, (k, v) => (v instanceof Date ? v.toISOString() : v));
+    console.log('GET /api/client/buses - filter:', safeStringify(filter));
     if (depStart && depEnd) {
-      console.log('departure range:', depStart.toISOString(), depEnd.toISOString());
+      console.log('departure range (UTC):', depStart.toISOString(), depEnd.toISOString());
     }
 
     // count and fetch with projection suitable for client listing
@@ -1074,11 +1137,18 @@ app.get('/api/client/buses', async (req, res) => {
       .select('busCode operator routeFrom routeTo departureAt departureDates arrivalAt arrivalDates price seatsAvailable seatsTotal duration busType status amenities seatMap')
       .lean();
 
+    // normalize amenities for client responses
+    buses = buses.map(b => {
+      if (typeof b.amenities === 'string') b.amenities = b.amenities.split(',').map((s) => s.trim()).filter(Boolean);
+      if (!Array.isArray(b.amenities)) b.amenities = [];
+      return b;
+    });
+
     // If strict filter returned nothing but user provided from/to, try a relaxed fallback:
     if ((Array.isArray(buses) && buses.length === 0) && (from || to)) {
       const relaxedAnd = [];
       if (from) {
-        const reFrom = new RegExp(from, 'i');
+        const reFrom = new RegExp(escapeRegex(from), 'i');
         relaxedAnd.push({
           $or: [
             { 'routeFrom.code': reFrom }, { 'routeFrom.city': reFrom }, { 'routeFrom.name': reFrom },
@@ -1087,7 +1157,7 @@ app.get('/api/client/buses', async (req, res) => {
         });
       }
       if (to) {
-        const reTo = new RegExp(to, 'i');
+        const reTo = new RegExp(escapeRegex(to), 'i');
         relaxedAnd.push({
           $or: [
             { 'routeTo.code': reTo }, { 'routeTo.city': reTo }, { 'routeTo.name': reTo },
@@ -1104,7 +1174,7 @@ app.get('/api/client/buses', async (req, res) => {
         });
       }
       const relaxedFilter = relaxedAnd.length ? { $and: relaxedAnd } : {};
-      console.log('relaxed fallback filter:', JSON.stringify(relaxedFilter));
+      console.log('relaxed fallback filter:', safeStringify(relaxedFilter));
       total = await Bus.countDocuments(relaxedFilter);
       buses = await Bus.find(relaxedFilter)
         .sort({ departureAt: 1 })
