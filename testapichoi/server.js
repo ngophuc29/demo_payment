@@ -1200,3 +1200,274 @@ app.get('/api/client/buses', async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch client buses', details: err.message });
   }
 });
+
+
+/* ----------------- Promotions: Schema + CRUD API ----------------- */
+
+const PromotionSchema = new mongoose.Schema({
+  code: { type: String, uppercase: true, sparse: true, index: true }, // allow null, index for lookup
+  title: { type: String, required: true },
+  description: { type: String, default: "" },
+  type: { type: String, enum: ["percent", "fixed"], required: true },
+  value: { type: Number, required: true, min: 0 },
+  minSpend: { type: Number, default: 0, min: 0 },
+  maxUses: { type: Number, default: 0, min: 0 }, // 0 = unlimited
+  usedCount: { type: Number, default: 0, min: 0 },
+  appliesTo: { type: [String], default: [] },
+  validFrom: { type: Date, required: true },
+  validTo: { type: Date, required: true },
+  active: { type: Boolean, default: true },
+  requireCode: { type: Boolean, default: true },
+  autoApply: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}, { collection: 'promotions' });
+
+// Basic validation/normalization
+PromotionSchema.pre('validate', function (next) {
+  try {
+    // normalize code
+    if (this.code && typeof this.code === 'string') {
+      this.code = this.code.trim().toUpperCase();
+      if (!/^[A-Z0-9]{3,20}$/.test(this.code)) {
+        return next(new Error('Invalid promotion code format (A-Z,0-9, 3-20 chars)'));
+      }
+    } else {
+      // if autoApply = false and requireCode true, code must exist
+      if (!this.autoApply && this.requireCode) {
+        return next(new Error('Code required when requireCode is true and autoApply is false'));
+      }
+    }
+
+    // date sanity
+    if (this.validFrom && this.validTo) {
+      if (new Date(this.validTo) <= new Date(this.validFrom)) {
+        return next(new Error('validTo must be after validFrom'));
+      }
+    }
+
+    // clamp numeric fields
+    if (typeof this.value !== 'number' || this.value < 0) this.value = Math.max(0, Number(this.value) || 0);
+    if (typeof this.minSpend !== 'number' || this.minSpend < 0) this.minSpend = Math.max(0, Number(this.minSpend) || 0);
+    if (typeof this.maxUses !== 'number' || this.maxUses < 0) this.maxUses = Math.max(0, Number(this.maxUses) || 0);
+    if (typeof this.usedCount !== 'number' || this.usedCount < 0) this.usedCount = Math.max(0, Number(this.usedCount) || 0);
+
+    // ensures appliesTo is array of trimmed strings
+    if (typeof this.appliesTo === 'string') {
+      this.appliesTo = this.appliesTo.split(',').map(s => String(s).trim()).filter(Boolean);
+    }
+    if (!Array.isArray(this.appliesTo)) this.appliesTo = [];
+
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+});
+
+PromotionSchema.pre('save', function (next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+const Promotion = mongoose.model('Promotion', PromotionSchema);
+
+// List promotions with pagination & filters
+app.get('/api/promotions', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.max(1, parseInt(req.query.pageSize) || 20);
+    const search = req.query.search ? String(req.query.search).trim() : '';
+    const status = req.query.status ? String(req.query.status).trim() : 'all'; // active/inactive/expired/used_up/all
+    const type = req.query.type ? String(req.query.type).trim() : 'all';
+    const appliesTo = req.query.appliesTo ? String(req.query.appliesTo).trim() : 'all';
+
+    const filter = {};
+
+    if (search) {
+      const re = new RegExp(search, 'i');
+      filter.$or = [{ code: re }, { title: re }, { description: re }];
+    }
+
+    if (type !== 'all') {
+      filter.type = type;
+    }
+
+    if (appliesTo !== 'all') {
+      filter.appliesTo = appliesTo;
+    }
+
+    // status handling requires computing against dates and usedCount
+    const now = new Date();
+    if (status !== 'all') {
+      if (status === 'active') {
+        filter.active = true;
+        filter.validFrom = { $lte: now };
+        filter.validTo = { $gte: now };
+        // used_up check: either maxUses === 0 (infinite) or usedCount < maxUses
+        filter.$or = filter.$or || [];
+        filter.$or.push({ maxUses: 0 }, { $expr: { $lt: ["$usedCount", "$maxUses"] } });
+      } else if (status === 'inactive') {
+        filter.active = false;
+      } else if (status === 'expired') {
+        filter.validTo = { $lt: now };
+      } else if (status === 'used_up') {
+        filter.$expr = { $and: [{ $gt: ["$maxUses", 0] }, { $gte: ["$usedCount", "$maxUses"] }] };
+      }
+    }
+
+    const total = await Promotion.countDocuments(filter);
+    let data = await Promotion.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+
+    return res.json({ data, pagination: { total, current: page, pageSize } });
+  } catch (err) {
+    console.error('GET /api/promotions error:', err);
+    return res.status(500).json({ error: 'Failed to fetch promotions', details: err.message });
+  }
+});
+
+// Get single promotion by id or code
+app.get('/api/promotions/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let item = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      item = await Promotion.findById(id).lean();
+    }
+    if (!item) {
+      item = await Promotion.findOne({ code: id.toUpperCase() }).lean();
+    }
+    if (!item) return res.status(404).json({ error: 'Promotion not found' });
+    return res.json(item);
+  } catch (err) {
+    console.error('GET /api/promotions/:id error:', err);
+    return res.status(500).json({ error: 'Failed to fetch promotion', details: err.message });
+  }
+});
+
+// Create promotion
+app.post('/api/promotions', async (req, res) => {
+  try {
+    const payload = req.body || {};
+
+    // normalize
+    if (payload.code) payload.code = String(payload.code).trim().toUpperCase();
+    payload.appliesTo = Array.isArray(payload.appliesTo) ? payload.appliesTo.map(String) : (payload.appliesTo ? [String(payload.appliesTo)] : []);
+    payload.requireCode = !!payload.requireCode;
+    payload.autoApply = !!payload.autoApply;
+
+    // parse dates
+    if (payload.validFrom) payload.validFrom = new Date(payload.validFrom);
+    if (payload.validTo) payload.validTo = new Date(payload.validTo);
+
+    // code uniqueness: only if code provided
+    if (payload.code) {
+      const exists = await Promotion.findOne({ code: payload.code }).lean();
+      if (exists) return res.status(400).json({ error: 'Promotion code already exists' });
+    } else {
+      if (!payload.autoApply && payload.requireCode) {
+        return res.status(400).json({ error: 'Code is required when requireCode is true and autoApply is false' });
+      }
+    }
+
+    const promo = new Promotion(payload);
+    await promo.save();
+    return res.status(201).json(promo);
+  } catch (err) {
+    console.error('POST /api/promotions error:', err);
+    return res.status(400).json({ error: 'Failed to create promotion', details: err.message });
+  }
+});
+
+// Update promotion
+app.put('/api/promotions/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const payload = req.body || {};
+
+    // normalize
+    if (payload.code) payload.code = String(payload.code).trim().toUpperCase();
+    if (payload.appliesTo && !Array.isArray(payload.appliesTo)) payload.appliesTo = [String(payload.appliesTo)];
+    if (payload.validFrom) payload.validFrom = new Date(payload.validFrom);
+    if (payload.validTo) payload.validTo = new Date(payload.validTo);
+    if (typeof payload.requireCode !== 'undefined') payload.requireCode = !!payload.requireCode;
+    if (typeof payload.autoApply !== 'undefined') payload.autoApply = !!payload.autoApply;
+
+    // If updating code, ensure uniqueness
+    if (payload.code) {
+      const existing = await Promotion.findOne({ code: payload.code, _id: { $ne: id } }).lean();
+      if (existing) return res.status(400).json({ error: 'Promotion code already exists' });
+    } else {
+      // if turning off autoApply and requireCode true but code missing => validation error
+      if (payload.requireCode && payload.autoApply === false && !payload.code) {
+        // allow if existing document already has code
+        const current = mongoose.Types.ObjectId.isValid(id) ? await Promotion.findById(id).lean() : null;
+        if (!current || !current.code) {
+          return res.status(400).json({ error: 'Code required when requireCode is true and autoApply false' });
+        }
+      }
+    }
+
+    payload.updatedAt = new Date();
+    const updated = await Promotion.findByIdAndUpdate(id, payload, { new: true, runValidators: true }).lean();
+    if (!updated) return res.status(404).json({ error: 'Promotion not found' });
+    return res.json(updated);
+  } catch (err) {
+    console.error('PUT /api/promotions/:id error:', err);
+    return res.status(400).json({ error: 'Failed to update promotion', details: err.message });
+  }
+});
+
+// Delete promotion
+app.delete('/api/promotions/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let removed = null;
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      removed = await Promotion.findByIdAndDelete(id).lean();
+    }
+    if (!removed) {
+      removed = await Promotion.findOneAndDelete({ code: id.toUpperCase() }).lean();
+    }
+    if (!removed) return res.status(404).json({ error: 'Promotion not found' });
+    return res.json({ success: true, id: removed._id || removed.code || id });
+  } catch (err) {
+    console.error('DELETE /api/promotions/:id error:', err);
+    return res.status(500).json({ error: 'Failed to delete promotion', details: err.message });
+  }
+});
+
+// Bulk actions for promotions: POST /api/promotions/bulk { action, ids }
+app.post('/api/promotions/bulk', async (req, res) => {
+  try {
+    const { action, ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids array required' });
+
+    const objectIds = ids.filter(i => mongoose.Types.ObjectId.isValid(i)).map(i => mongoose.Types.ObjectId(i));
+    const stringIds = ids.filter(i => !mongoose.Types.ObjectId.isValid(i)).map(i => String(i).toUpperCase());
+
+    const orClauses = [];
+    if (objectIds.length) orClauses.push({ _id: { $in: objectIds } });
+    if (stringIds.length) orClauses.push({ code: { $in: stringIds } });
+
+    if (orClauses.length === 0) return res.status(400).json({ error: 'No valid ids provided' });
+
+    if (action === 'delete') {
+      await Promotion.deleteMany({ $or: orClauses });
+      return res.json({ success: true });
+    } else if (action === 'activate' || action === 'deactivate') {
+      const active = action === 'activate';
+      await Promotion.updateMany({ $or: orClauses }, { $set: { active, updatedAt: new Date() } });
+      return res.json({ success: true });
+    } else {
+      return res.status(400).json({ error: 'Unknown action' });
+    }
+  } catch (err) {
+    console.error('POST /api/promotions/bulk error:', err);
+    return res.status(500).json({ error: 'Bulk action failed', details: err.message });
+  }
+});
