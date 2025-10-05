@@ -60,7 +60,8 @@ const BusSchema = new mongoose.Schema({
   arrivalAt: { type: Date, required: false },
   duration: String,
   busType: [String],
-  price: { type: Number, min: 0 },
+  adultPrice: { type: Number, min: 0, default: 0 },
+  childPrice: { type: Number, min: 0, default: 0 },
   seatsTotal: { type: Number, min: 0, default: 0 },
   seatsAvailable: { type: Number, min: 0, default: 0 },
   // seatMap stored as array of seat objects with status
@@ -75,6 +76,16 @@ const BusSchema = new mongoose.Schema({
 // Validate logical consistency before saving
 BusSchema.pre('validate', function (next) {
   try {
+    // Backfill adultPrice from legacy price if present (handle old docs or incoming payloads)
+    if ((typeof this.adultPrice !== 'number' || isNaN(this.adultPrice)) && typeof this.price !== 'undefined') {
+      // if legacy field exists (from older docs), use it
+      const p = Number(this.price);
+      if (!Number.isNaN(p)) this.adultPrice = p;
+    }
+    // ensure adultPrice/childPrice are numbers >= 0
+    if (typeof this.adultPrice !== 'number' || isNaN(this.adultPrice) || this.adultPrice < 0) this.adultPrice = Math.max(0, Number(this.adultPrice) || 0);
+    if (typeof this.childPrice !== 'number' || isNaN(this.childPrice) || this.childPrice < 0) this.childPrice = Math.max(0, Number(this.childPrice) || 0);
+
     // Normalize departureDates: ensure array of valid Dates
     if (Array.isArray(this.departureDates) && this.departureDates.length > 0) {
       const parsed = this.departureDates.map(d => new Date(d));
@@ -741,6 +752,12 @@ app.get('/api/buses/:id', async (req, res) => {
     } else if (!Array.isArray(bus.amenities)) {
       bus.amenities = [];
     }
+    // backfill adultPrice from legacy price if needed and remove legacy key
+    if ((typeof bus.adultPrice !== 'number' || isNaN(bus.adultPrice)) && typeof bus.price === 'number') {
+      bus.adultPrice = Number(bus.price) || 0;
+    }
+    if (typeof bus.childPrice !== 'number') bus.childPrice = bus.childPrice || 0;
+    if (typeof bus.price !== 'undefined') delete bus.price;
 
     return res.json(bus);
   } catch (err) {
@@ -869,6 +886,13 @@ app.post('/api/buses', async (req, res) => {
 app.put('/api/buses/:id', async (req, res) => {
   try {
     const payload = req.body;
+    // map legacy price -> adultPrice for updates; then remove price
+    if (typeof payload.adultPrice === 'undefined' && typeof payload.price !== 'undefined') {
+      payload.adultPrice = Number(payload.price) || 0;
+    }
+    if (typeof payload.adultPrice !== 'undefined') payload.adultPrice = Number(payload.adultPrice);
+    if (typeof payload.childPrice !== 'undefined') payload.childPrice = Number(payload.childPrice);
+    delete payload.price;
 
     // Normalize departureDates/arrivalAt similar to create
     if (Array.isArray(payload.departureDates)) {
@@ -903,6 +927,10 @@ app.put('/api/buses/:id', async (req, res) => {
     payload.updatedAt = new Date();
     const bus = await Bus.findByIdAndUpdate(req.params.id, payload, { new: true, runValidators: true }).lean();
     if (!bus) return res.status(404).json({ error: 'Bus not found' });
+
+    // ensure adultPrice/childPrice exist in response
+    if (typeof bus.adultPrice !== 'number') bus.adultPrice = 0;
+    if (typeof bus.childPrice !== 'number') bus.childPrice = bus.childPrice || 0;
 
     // ensure response amenities is always an array (handle old docs)
     if (bus && typeof bus.amenities === 'string') {
@@ -1134,13 +1162,20 @@ app.get('/api/client/buses', async (req, res) => {
       .sort({ departureAt: 1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
-      .select('busCode operator routeFrom routeTo departureAt departureDates arrivalAt arrivalDates price seatsAvailable seatsTotal duration busType status amenities seatMap')
+      .select('busCode operator routeFrom routeTo departureAt departureDates arrivalAt arrivalDates adultPrice childPrice seatsAvailable seatsTotal duration busType status amenities seatMap')
       .lean();
 
     // normalize amenities for client responses
     buses = buses.map(b => {
       if (typeof b.amenities === 'string') b.amenities = b.amenities.split(',').map((s) => s.trim()).filter(Boolean);
       if (!Array.isArray(b.amenities)) b.amenities = [];
+      // backfill adultPrice from legacy price if any doc still has old field
+      if ((typeof b.adultPrice !== 'number' || isNaN(b.adultPrice)) && typeof b.price === 'number') {
+        b.adultPrice = Number(b.price) || 0;
+      }
+      if (typeof b.childPrice !== 'number') b.childPrice = b.childPrice || 0;
+      // remove legacy price key from response to client
+      if (typeof b.price !== 'undefined') delete b.price;
       return b;
     });
 
