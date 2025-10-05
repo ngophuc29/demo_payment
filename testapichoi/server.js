@@ -1328,6 +1328,7 @@ app.get('/api/promotions', async (req, res) => {
     }
 
     if (appliesTo !== 'all') {
+      // match promotions whose appliesTo array contains the requested value
       filter.appliesTo = appliesTo;
     }
 
@@ -1350,12 +1351,31 @@ app.get('/api/promotions', async (req, res) => {
       }
     }
 
+    // --- MISSING DB QUERY FIX: compute total and fetch data ---
     const total = await Promotion.countDocuments(filter);
     let data = await Promotion.find(filter)
       .sort({ createdAt: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean();
+
+    // Normalization & derived fields for client convenience
+    data = data.map(p => {
+      const validFrom = p.validFrom ? new Date(p.validFrom) : null;
+      const validTo = p.validTo ? new Date(p.validTo) : null;
+      const isExpired = validTo ? validTo < now : false;
+      const isActiveNow = !!p.active && validFrom && validTo ? (validFrom <= now && now <= validTo) : !!p.active;
+      const isUsedUp = (p.maxUses && p.maxUses > 0) ? (p.usedCount >= p.maxUses) : false;
+      return {
+        ...p,
+        code: p.code && p.code.trim().length ? p.code.trim().toUpperCase() : null,
+        validFrom: validFrom ? validFrom.toISOString() : null,
+        validTo: validTo ? validTo.toISOString() : null,
+        isExpired,
+        isActiveNow,
+        isUsedUp
+      };
+    });
 
     return res.json({ data, pagination: { total, current: page, pageSize } });
   } catch (err) {
@@ -1504,5 +1524,91 @@ app.post('/api/promotions/bulk', async (req, res) => {
   } catch (err) {
     console.error('POST /api/promotions/bulk error:', err);
     return res.status(500).json({ error: 'Bulk action failed', details: err.message });
+  }
+});
+
+app.post('/api/promotions/validate', async (req, res) => {
+  try {
+    const { code, serviceType = 'all', amount } = req.body || {};
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ ok: false, error: 'code_required' });
+    }
+    const numericAmount = Number(amount || 0);
+    if (!Number.isFinite(numericAmount) || numericAmount < 0) {
+      return res.status(400).json({ ok: false, error: 'invalid_amount' });
+    }
+
+    const codeNorm = String(code).trim().toUpperCase();
+    const promo = await Promotion.findOne({ code: codeNorm }).lean();
+    if (!promo) return res.status(404).json({ ok: false, error: 'promo_not_found' });
+
+    const now = new Date();
+    if (!promo.active) return res.status(400).json({ ok: false, error: 'promo_inactive' });
+    if (promo.validFrom && new Date(promo.validFrom) > now) return res.status(400).json({ ok: false, error: 'promo_not_started' });
+    if (promo.validTo && new Date(promo.validTo) < now) return res.status(400).json({ ok: false, error: 'promo_expired' });
+    if (promo.maxUses && promo.maxUses > 0 && promo.usedCount >= promo.maxUses) return res.status(400).json({ ok: false, error: 'promo_used_up' });
+
+    const applies = Array.isArray(promo.appliesTo) ? promo.appliesTo.map(String) : [];
+    // robust service-type check: normalize to lowercase and accept plural/singular variants
+    const appliesNorm = applies.map(a => String(a).toLowerCase());
+    const svc = String(serviceType || 'all').toLowerCase();
+    const stripS = (s) => s.replace(/s$/, '');
+    const matchesApply =
+      appliesNorm.includes('all') ||
+      appliesNorm.includes(svc) ||
+      appliesNorm.includes(stripS(svc)) ||
+      appliesNorm.map(stripS).includes(stripS(svc));
+    if (!matchesApply) {
+      console.log('Promotion not applicable for serviceType:', serviceType, 'promo.appliesTo=', applies);
+      return res.status(400).json({ ok: false, error: 'not_applicable_service' });
+    }
+
+    // treat 'amount' as eligible base (client should pass eligible amount for subset if needed)
+    const eligibleAmount = numericAmount;
+    if (eligibleAmount < (Number(promo.minSpend || 0))) {
+      return res.status(400).json({
+        ok: false,
+        error: 'min_spend_not_met',
+        requiredMinSpend: Number(promo.minSpend || 0),
+        eligibleAmount
+      });
+    }
+
+    // compute discount
+    let discount = 0;
+    if (promo.type === 'percent') {
+      discount = Math.floor(eligibleAmount * (Number(promo.value || 0) / 100));
+    } else {
+      discount = Number(promo.value || 0);
+    }
+
+    // clamp discount to eligible amount
+    discount = Math.max(0, Math.min(discount, eligibleAmount));
+
+    // honor optional maxDiscount if present on promo document
+    if (typeof promo.maxDiscount === 'number' && promo.maxDiscount > 0) {
+      discount = Math.min(discount, promo.maxDiscount);
+    }
+
+    const newTotal = Math.max(0, Math.round(eligibleAmount - discount));
+
+    return res.json({
+      ok: true,
+      promotion: {
+        id: promo._id,
+        code: promo.code || null,
+        title: promo.title,
+        type: promo.type,
+        value: promo.value,
+        minSpend: promo.minSpend,
+        appliesTo: promo.appliesTo,
+      },
+      eligibleAmount,
+      discount,
+      newTotal
+    });
+  } catch (err) {
+    console.error('POST /api/promotions/validate error:', err);
+    return res.status(500).json({ ok: false, error: 'server_error', details: err.message });
   }
 });
