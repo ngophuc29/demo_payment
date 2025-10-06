@@ -20,6 +20,17 @@ cloudinary.config({
   api_key: process.env.CLOUDINARY_APIKEY || '973126759771237',
   api_secret: process.env.CLOUDINARY_APISECRET || '_sIE_D41tWHju2nEbmOHC4OrVcg',
 });
+const multer = require('multer');
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
+
 // helper: upload buffer to cloudinary via upload_stream
 function uploadBufferToCloudinary(buffer, folder = 'articles') {
   return new Promise((resolve, reject) => {
@@ -1904,5 +1915,38 @@ app.post('/api/admin/news/bulk', async (req, res) => {
   } catch (err) {
     console.error('POST /api/admin/news/bulk error:', err);
     return res.status(500).json({ error: 'Bulk action failed', details: err.message });
+  }
+});
+
+function uploadBufferToCloudinary(buffer, folder = 'uploads') {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream({ folder }, (err, result) => {
+      if (err) return reject(err);
+      resolve(result);
+    });
+    streamifier.createReadStream(buffer).pipe(uploadStream);
+  });
+}
+
+app.post('/api/upload', upload.array('images', 10), async (req, res) => {
+  try {
+    const files = req.files || [];
+    if (!files.length) return res.status(400).json({ success: false, message: 'No files uploaded' });
+
+    const folder = typeof req.body.folder === 'string' && req.body.folder.trim() ? req.body.folder.trim() : 'uploads';
+    const uploads = await Promise.all(files.map(f => uploadBufferToCloudinary(f.buffer, folder)));
+
+    const data = uploads.map(u => ({
+      url: u.secure_url || u.url,
+      public_id: u.public_id,
+      width: u.width,
+      height: u.height,
+      resource_type: u.resource_type,
+    }));
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('Upload error', err);
+    return res.status(500).json({ success: false, message: err.message || 'Upload failed' });
   }
 });
