@@ -7,10 +7,83 @@ const fs = require('fs') // <-- added
 
 // --- New: mongoose for DB CRUD ---
 const mongoose = require('mongoose');
-
-// Use provided connection string (or override with env var)
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ngophuc2911_db_user:phuc29112003@cluster0.xrujamk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
+// Use provided connection string (or override with env var)
+const sharp = require('sharp');
+const streamifier = require('streamifier');
+const cloudinary = require('cloudinary').v2;
+
+// cloudinary config (keep your hardcoded or env)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_NAME || 'dxm8pqql5',
+  api_key: process.env.CLOUDINARY_APIKEY || '973126759771237',
+  api_secret: process.env.CLOUDINARY_APISECRET || '_sIE_D41tWHju2nEbmOHC4OrVcg',
+});
+// helper: upload buffer to cloudinary via upload_stream
+function uploadBufferToCloudinary(buffer, folder = 'articles') {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream({ folder }, (error, result) => {
+      if (error) return reject(error);
+      resolve(result);
+    });
+    streamifier.createReadStream(buffer).pipe(uploadStream);
+  });
+}
+async function uploadEmbeddedImagesInHtml(html, opts = {}) {
+  if (!html || typeof html !== 'string') return html;
+  const maxBytes = opts.maxBytes || 10 * 1024 * 1024; // server side limit per image
+  const maxWidth = opts.maxWidth || 1600;
+  const quality = typeof opts.quality === 'number' ? opts.quality : 80;
+
+  const regex = /<img[^>]+src=(["'])(data:[^"'>]+)\1[^>]*>/g;
+  const found = new Map();
+  let match;
+  const uploads = [];
+
+  while ((match = regex.exec(html)) !== null) {
+    const dataUri = match[2];
+    if (!dataUri || !dataUri.startsWith('data:')) continue;
+    if (found.has(dataUri)) continue;
+    found.set(dataUri, true);
+
+    uploads.push((async () => {
+      // split metadata
+      const comma = dataUri.indexOf(',');
+      const meta = dataUri.slice(5, comma); // e.g. image/jpeg;base64
+      const b64 = dataUri.slice(comma + 1);
+      const buffer = Buffer.from(b64, 'base64');
+      if (buffer.length > maxBytes) {
+        // still attempt to compress with sharp (reduce size)
+      }
+      // use sharp to resize and compress
+      let img = sharp(buffer).rotate();
+      const metaInfo = await img.metadata();
+      if (metaInfo.width && metaInfo.width > maxWidth) {
+        img = img.resize({ width: maxWidth, withoutEnlargement: true });
+      }
+      // choose output format
+      if (metaInfo.format === 'png') {
+        img = img.png({ quality });
+      } else {
+        img = img.jpeg({ quality });
+      }
+      const outBuffer = await img.toBuffer();
+      // upload to cloudinary
+      const result = await uploadBufferToCloudinary(outBuffer, opts.folder || 'articles');
+      return { dataUri, url: result.secure_url || result.url };
+    })());
+  }
+
+  if (uploads.length === 0) return html;
+  const results = await Promise.all(uploads);
+  let newHtml = html;
+  for (const r of results) {
+    const esc = r.dataUri.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    newHtml = newHtml.replace(new RegExp(esc, 'g'), r.url);
+  }
+  return newHtml;
+}
 // --- New: initialize DB then start server to avoid mongoose buffering timeouts ---
 (async function init() {
   try {
@@ -170,9 +243,10 @@ BusSchema.pre('save', function (next) {
 const Bus = mongoose.model('Bus', BusSchema);
 
 // --- New: JSON body parsing middleware ---
-app.use(express.json());
+ 
 app.use(cors())
-
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.get('/', (req, res) => {
   res.send('Hello World!')
 })
@@ -1610,5 +1684,225 @@ app.post('/api/promotions/validate', async (req, res) => {
   } catch (err) {
     console.error('POST /api/promotions/validate error:', err);
     return res.status(500).json({ ok: false, error: 'server_error', details: err.message });
+  }
+});
+
+
+
+
+// api cho bài viết
+// ----------------- Articles (News) API -----------------
+const ArticleSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  slug: { type: String, required: true, trim: true, lowercase: true, index: true },
+  category: { type: String, default: "company" },
+  status: { type: String, enum: ["published", "unpublished"], default: "unpublished" },
+  author: { id: String, name: String, avatar: String },
+  summary: { type: String, default: "" },
+  content: { type: String, default: "" },
+  featured: { type: Boolean, default: false },
+  heroImage: { type: String, default: null },
+  publishedAt: { type: Date, default: null },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+  views: { type: Number, default: 0 },
+}, { collection: 'articles' });
+
+ArticleSchema.pre('save', function (next) {
+  try {
+    this.updatedAt = new Date();
+    if (!this.createdAt) this.createdAt = this.updatedAt;
+    if (this.status === 'published' && !this.publishedAt) this.publishedAt = new Date();
+    // normalize slug
+    if (this.slug && typeof this.slug === 'string') this.slug = String(this.slug).toLowerCase().trim();
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+});
+
+const Article = mongoose.model('Article', ArticleSchema);
+
+// List articles: GET /api/admin/news
+app.get('/api/admin/news', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit) || 10);
+    const q = req.query.q ? String(req.query.q).trim() : '';
+    const status = req.query.status ? String(req.query.status) : 'all';
+    const category = req.query.category ? String(req.query.category) : 'all';
+
+    const filter = {};
+    if (q) {
+      const re = new RegExp(q, 'i');
+      filter.$or = [{ title: re }, { summary: re }, { content: re }, { slug: re }];
+    }
+    if (status !== 'all') filter.status = status;
+    if (category !== 'all') filter.category = category;
+
+    const total = await Article.countDocuments(filter);
+    const data = await Article.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    return res.json({ data, pagination: { total, current: page, pageSize: limit } });
+  } catch (err) {
+    console.error('GET /api/admin/news error:', err);
+    return res.status(500).json({ error: 'Failed to fetch articles', details: err.message });
+  }
+});
+
+// Get single article by id: GET /api/admin/news/:id
+app.get('/api/admin/news/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let item = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      item = await Article.findById(id).lean();
+    }
+    if (!item) {
+      // fallback to slug lookup
+      item = await Article.findOne({ slug: id }).lean();
+    }
+    if (!item) return res.status(404).json({ error: 'Article not found' });
+    return res.json(item);
+  } catch (err) {
+    console.error('GET /api/admin/news/:id error:', err);
+    return res.status(500).json({ error: 'Failed to fetch article', details: err.message });
+  }
+});
+
+// Create article: POST /api/admin/news
+app.post('/api/admin/news', async (req, res) => {
+  try {
+    const payload = req.body || {};
+    if (!payload.title || !payload.slug) return res.status(400).json({ error: 'title_and_slug_required' });
+
+    // process embedded images in content before creating
+    if (payload.content && typeof payload.content === 'string') {
+      try {
+        payload.content = await uploadEmbeddedImagesInHtml(payload.content, { folder: 'articles', maxBytes: 10 * 1024 * 1024 });
+      } catch (err) {
+        console.error('Failed processing embedded images:', err);
+        return res.status(400).json({ error: 'embedded_image_processing_failed', details: err.message });
+      }
+    }
+
+    // ensure unique slug
+    const slugNorm = String(payload.slug).toLowerCase().trim();
+    const exists = await Article.findOne({ slug: slugNorm }).lean();
+    if (exists) return res.status(400).json({ error: 'slug_already_exists' });
+
+    const article = new Article({
+      title: String(payload.title).trim(),
+      slug: slugNorm,
+      category: payload.category || 'company',
+      status: payload.status === 'published' ? 'published' : 'unpublished',
+      author: payload.author || { id: 'system', name: 'Admin', avatar: '' },
+      summary: payload.summary || '',
+      content: payload.content || '',
+      featured: !!payload.featured,
+      heroImage: payload.heroImage || null,
+      publishedAt: payload.status === 'published' ? (payload.publishedAt ? new Date(payload.publishedAt) : new Date()) : null,
+    });
+
+    await article.save();
+    return res.status(201).json(article);
+  } catch (err) {
+    console.error('POST /api/admin/news error:', err);
+    return res.status(400).json({ error: 'Failed to create article', details: err.message });
+  }
+});
+
+// Update article: PUT /api/admin/news/:id
+app.put('/api/admin/news/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const payload = req.body || {};
+
+    // process embedded images in content before updating
+    if (payload.content && typeof payload.content === 'string') {
+      try {
+        payload.content = await uploadEmbeddedImagesInHtml(payload.content, { folder: 'articles', maxBytes: 10 * 1024 * 1024 });
+      } catch (err) {
+        console.error('Failed processing embedded images:', err);
+        return res.status(400).json({ error: 'embedded_image_processing_failed', details: err.message });
+      }
+    }
+
+    if (payload.slug) payload.slug = String(payload.slug).toLowerCase().trim();
+
+    // check slug uniqueness if slug changed
+    if (payload.slug && mongoose.Types.ObjectId.isValid(id)) {
+      const other = await Article.findOne({ slug: payload.slug, _id: { $ne: id } }).lean();
+      if (other) return res.status(400).json({ error: 'slug_already_exists' });
+    } else if (payload.slug) {
+      const other = await Article.findOne({ slug: payload.slug }).lean();
+      if (other && String(other._id) !== id) return res.status(400).json({ error: 'slug_already_exists' });
+    }
+
+    if (payload.status === 'published' && !payload.publishedAt) payload.publishedAt = new Date();
+    payload.updatedAt = new Date();
+
+    const updated = await Article.findByIdAndUpdate(id, payload, { new: true, runValidators: true }).lean();
+    if (!updated) return res.status(404).json({ error: 'Article not found' });
+    return res.json(updated);
+  } catch (err) {
+    console.error('PUT /api/admin/news/:id error:', err);
+    return res.status(400).json({ error: 'Failed to update article', details: err.message });
+  }
+});
+
+// Delete article: DELETE /api/admin/news/:id
+app.delete('/api/admin/news/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let removed = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      removed = await Article.findByIdAndDelete(id).lean();
+    }
+    if (!removed) {
+      removed = await Article.findOneAndDelete({ slug: id }).lean();
+    }
+    if (!removed) return res.status(404).json({ error: 'Article not found' });
+    return res.json({ success: true, id: removed._id || id });
+  } catch (err) {
+    console.error('DELETE /api/admin/news/:id error:', err);
+    return res.status(500).json({ error: 'Failed to delete article', details: err.message });
+  }
+});
+
+// Bulk actions for admin: POST /api/admin/news/bulk { action, ids }
+app.post('/api/admin/news/bulk', async (req, res) => {
+  try {
+    const { action, ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids_required' });
+
+    if (action === 'delete') {
+      const objectIds = ids.filter(i => mongoose.Types.ObjectId.isValid(i)).map(i => mongoose.Types.ObjectId(i));
+      const stringSlugs = ids.filter(i => !mongoose.Types.ObjectId.isValid(i));
+      const orClauses = [];
+      if (objectIds.length) orClauses.push({ _id: { $in: objectIds } });
+      if (stringSlugs.length) orClauses.push({ slug: { $in: stringSlugs } });
+      if (orClauses.length === 0) return res.status(400).json({ error: 'no_valid_ids' });
+      await Article.deleteMany({ $or: orClauses });
+      return res.json({ success: true });
+    } else if (action === 'publish' || action === 'unpublish') {
+      const set = action === 'publish' ? { status: 'published', publishedAt: new Date() } : { status: 'unpublished' };
+      const objectIds = ids.filter(i => mongoose.Types.ObjectId.isValid(i)).map(i => mongoose.Types.ObjectId(i));
+      const stringSlugs = ids.filter(i => !mongoose.Types.ObjectId.isValid(i));
+      const updateFilter = { $or: [] };
+      if (objectIds.length) updateFilter.$or.push({ _id: { $in: objectIds } });
+      if (stringSlugs.length) updateFilter.$or.push({ slug: { $in: stringSlugs } });
+      await Article.updateMany(updateFilter, { $set: set, $currentDate: { updatedAt: true } });
+      return res.json({ success: true });
+    } else {
+      return res.status(400).json({ error: 'unknown_action' });
+    }
+  } catch (err) {
+    console.error('POST /api/admin/news/bulk error:', err);
+    return res.status(500).json({ error: 'Bulk action failed', details: err.message });
   }
 });
