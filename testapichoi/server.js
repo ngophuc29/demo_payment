@@ -254,7 +254,7 @@ BusSchema.pre('save', function (next) {
 const Bus = mongoose.model('Bus', BusSchema);
 
 // --- New: JSON body parsing middleware ---
- 
+
 app.use(cors())
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -1742,7 +1742,8 @@ app.get('/api/admin/news', async (req, res) => {
     const q = req.query.q ? String(req.query.q).trim() : '';
     const status = req.query.status ? String(req.query.status) : 'all';
     const category = req.query.category ? String(req.query.category) : 'all';
-
+    // support featured filter: ?featured=true or ?featured=false
+    const featuredParam = typeof req.query.featured !== 'undefined' ? String(req.query.featured).toLowerCase() : null;
     const filter = {};
     if (q) {
       const re = new RegExp(q, 'i');
@@ -1750,7 +1751,8 @@ app.get('/api/admin/news', async (req, res) => {
     }
     if (status !== 'all') filter.status = status;
     if (category !== 'all') filter.category = category;
-
+    if (featuredParam === 'true') filter.featured = true;
+    if (featuredParam === 'false') filter.featured = false;
     const total = await Article.countDocuments(filter);
     const data = await Article.find(filter)
       .sort({ createdAt: -1 })
