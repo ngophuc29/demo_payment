@@ -2018,16 +2018,17 @@ OrderSchema.pre('validate', async function (next) {
     const datePart = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
     const maxTries = 6;
     for (let i = 0; i < maxTries; i++) {
-      const rand = crypto.randomBytes(3).toString('hex').toUpperCase();
-      const candidate = `ORD-${datePart}-${rand}`;
+      // numeric 6-digit suffix, pad with leading zeros
+      const randNum = String(crypto.randomInt(0, 1000000)).padStart(6, '0'); // e.g. "14898E" -> now numeric like "014898"
+      const candidate = `ORD_${datePart}_${randNum}`; // use underscore separators
       const exists = await this.constructor.countDocuments({ orderNumber: candidate }).limit(1);
       if (!exists) {
         this.orderNumber = candidate;
         return next();
       }
     }
-    // fallback timestamp suffix
-    this.orderNumber = `ORD-${datePart}-${Date.now().toString().slice(-8)}`;
+    // fallback timestamp-based numeric suffix (use underscore, take last 6 digits)
+    this.orderNumber = `ORD_${datePart}_${Date.now().toString().slice(-6)}`;
     return next();
   } catch (err) {
     return next(err);

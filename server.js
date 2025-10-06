@@ -15,65 +15,109 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+const ORDERS_API_BASE = process.env.ORDERS_API_BASE || 'http://localhost:7700';
+async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
+    if (!orderRef) {
+        console.warn('markOrderPaid: missing orderRef, skip update');
+        return;
+    }
+    try {
+        const body = {
+            paymentStatus: 'paid',
+            paymentMethod: method,
+            orderStatus: 'confirmed',
+        };
+        // gateway-specific transaction id fields
+        if (txnId) {
+            if (method === 'momo') {
+                body.transId = txnId;
+            } else if (method === 'zalopay') {
+                body.zp_trans_id = txnId;
+            } else {
+                // generic fallback
+                body.paymentReference = txnId;
+            }
+        }
 
+        await axios.put(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(orderRef)}`, body, { timeout: 5000 });
+        console.log(`Order ${orderRef} updated:`, body);
+    } catch (err) {
+        console.error(`Failed to update order ${orderRef} on ${ORDERS_API_BASE}:`, err.response?.data || err.message);
+    }
+}
 // ========== MoMo API ==========
 app.post('/momo/payment', async (req, res) => {
     console.log('[MoMo] Request body:', req.body);
-    let {
-        accessKey,
-        secretKey,
-        orderInfo,
-        partnerCode,
-        redirectUrl,
-        ipnUrl,
-        requestType,
-        extraData,
-        orderGroupId,
-        autoCapture,
-        lang,
-    } = momoConfig;
-    var amount = '10000';
-    var orderId = partnerCode + new Date().getTime();
-    var requestId = orderId;
-    var rawSignature =
-        'accessKey=' + accessKey +
-        '&amount=' + amount +
-        '&extraData=' + extraData +
-        '&ipnUrl=' + ipnUrl +
-        '&orderId=' + orderId +
-        '&orderInfo=' + orderInfo +
-        '&partnerCode=' + partnerCode +
-        '&redirectUrl=' + redirectUrl +
-        '&requestId=' + requestId +
-        '&requestType=' + requestType;
-    var signature = crypto.createHmac('sha256', secretKey).update(rawSignature).digest('hex');
-    const requestBody = JSON.stringify({
-        partnerCode,
-        partnerName: 'Test',
-        storeId: 'MomoTestStore',
-        requestId,
-        amount,
-        orderId,
-        orderInfo,
-        redirectUrl,
-        ipnUrl,
-        lang,
-        requestType,
-        autoCapture,
-        extraData,
-        orderGroupId,
-        signature,
-    });
-    const options = {
-        method: 'POST',
-        url: 'https://test-payment.momo.vn/v2/gateway/api/create',
-        headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(requestBody),
-        },
-        data: requestBody,
-    };
     try {
+        // lấy từ client nếu có, fallback về config/test
+        const {
+            amount: amtFromClient,
+            orderInfo: orderInfoFromClient,
+            partnerCode: partnerCodeFromClient,
+            redirectUrl: redirectUrlFromClient,
+            ipnUrl: ipnUrlFromClient,
+            extraData: extraDataFromClient,
+            requestType: requestTypeFromClient,
+            partnerCode: partnerCodeCfg,
+            accessKey: accessKeyCfg,
+            secretKey: secretKeyCfg,
+            lang: langCfg,
+            autoCapture: autoCaptureCfg,
+        } = { ...momoConfig, ...req.body };
+
+        const amount = String(amtFromClient || req.body.amount || '10000');
+        const partnerCode = partnerCodeFromClient || partnerCodeCfg || momoConfig.partnerCode;
+        const accessKey = accessKeyCfg || momoConfig.accessKey;
+        const secretKey = secretKeyCfg || momoConfig.secretKey;
+        const orderInfo = orderInfoFromClient || 'Thanh toán';
+        const redirectUrl = redirectUrlFromClient || momoConfig.redirectUrl;
+        const ipnUrl = ipnUrlFromClient || momoConfig.ipnUrl || 'http://localhost:3000/thanh-toan-thanh-cong';
+        const extraData = extraDataFromClient || '';
+        const requestType = requestTypeFromClient || requestTypeFromClient || momoConfig.requestType || 'payWithMethod';
+        const requestId = (req.body.requestId) ? String(req.body.requestId) : `${partnerCode}${Date.now()}`;
+        const orderId = req.body.orderId || `${partnerCode}${Date.now()}`;
+
+        const rawSignature =
+            'accessKey=' + accessKey +
+            '&amount=' + amount +
+            '&extraData=' + extraData +
+            '&ipnUrl=' + ipnUrl +
+            '&orderId=' + orderId +
+            '&orderInfo=' + orderInfo +
+            '&partnerCode=' + partnerCode +
+            '&redirectUrl=' + redirectUrl +
+            '&requestId=' + requestId +
+            '&requestType=' + requestType;
+
+        const signature = crypto.createHmac('sha256', secretKey).update(rawSignature).digest('hex');
+
+        const requestBody = JSON.stringify({
+            partnerCode,
+            partnerName: 'MegaTrip',
+            storeId: 'MegaTripStore',
+            requestId,
+            amount,
+            orderId,
+            orderInfo,
+            redirectUrl,
+            ipnUrl,
+            lang: langCfg || 'vi',
+            requestType,
+            autoCapture: autoCaptureCfg,
+            extraData,
+            signature,
+        });
+
+        const options = {
+            method: 'POST',
+            url: 'https://test-payment.momo.vn/v2/gateway/api/create',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(requestBody),
+            },
+            data: requestBody,
+        };
+
         const result = await axios(options);
         console.log('[MoMo] /payment response:', result.data);
         return res.status(200).json(result.data);
@@ -85,8 +129,30 @@ app.post('/momo/payment', async (req, res) => {
 
 app.post('/momo/callback', async (req, res) => {
     console.log('[MoMo] Request body:', req.body);
-    console.log('[MoMo] callback:', req.body);
-    return res.status(204).json(req.body);
+    try {
+        const body = req.body || {};
+        // common MoMo success indicators: resultCode === 0 or errCode === 0 depending on API
+        const success = (typeof body.resultCode !== 'undefined' && Number(body.resultCode) === 0)
+            || (typeof body.errorCode !== 'undefined' && Number(body.errorCode) === 0)
+            || (body.status && String(body.status).toLowerCase() === 'success');
+
+        // order id we passed earlier as orderId when creating payment
+        const orderRef = body.orderId || body.orderid || body.requestId || body.orderInfo || body.extraData || null;
+        const txnId = body.transId || body.transactionId || body.requestId || null;
+
+        if (success && orderRef) {
+            // update order in orders service
+            await markOrderPaid(orderRef, 'momo', txnId);
+        } else {
+            console.log('[MoMo] callback not-success or missing orderRef:', { success, orderRef, body });
+        }
+
+        // respond quickly to MoMo
+        return res.status(204).end();
+    } catch (error) {
+        console.log('[MoMo] /callback error:', error.message);
+        return res.status(500).json({ statusCode: 500, message: error.message });
+    }
 });
 
 app.post('/momo/check-status-transaction', async (req, res) => {
@@ -174,29 +240,37 @@ const zaloConfig = {
 
 app.post('/zalo/payment', async (req, res) => {
     console.log('[ZaloPay] Request body:', req.body);
-    const embed_data = { redirecturl: 'http://localhost:3000/thanh-toan-thanh-cong' };
-    const items = [];
-    const transID = Math.floor(Math.random() * 1000000);
-    const order = {
-        app_id: zaloConfig.app_id,
-        app_trans_id: `${moment().format('YYMMDD')}_${transID}`,
-        app_user: 'user123',
-        app_time: Date.now(),
-        item: JSON.stringify(items),
-        embed_data: JSON.stringify(embed_data),
-        amount: 50000,
-        callback_url: 'https://d46b2a98cf42.ngrok-free.app/callback',
-        description: `Lazada - Payment for the order #${transID}`,
-        bank_code: '',
-    };
-    const data =
-        zaloConfig.app_id + '|' + order.app_trans_id + '|' + order.app_user + '|' + order.amount + '|' + order.app_time + '|' + order.embed_data + '|' + order.item;
-    order.mac = CryptoJS.HmacSHA256(data, zaloConfig.key1).toString();
-    console.log('[ZaloPay] PAYMENT DEBUG');
-    console.log('[ZaloPay] MAC input:', data);
-    console.log('[ZaloPay] MAC output:', order.mac);
-    console.log('[ZaloPay] Order:', order);
     try {
+        const {
+            amount = 50000,
+            description = 'Thanh toán MegaTrip',
+            app_user = 'user123',
+            // callback_url = 'http://localhost:3000/thanh-toan-thanh-cong',
+            callback_url = 'https://cb138524480d.ngrok-free.app/zalo/callback',
+            embed_data = {},
+            items = []
+        } = req.body;
+
+        const transID = Math.floor(Math.random() * 1000000);
+        const app_trans_id = req.body.app_trans_id || `${moment().format('YYMMDD')}_${transID}`;
+
+        const order = {
+            app_id: zaloConfig.app_id,
+            app_trans_id,
+            app_user,
+            app_time: Date.now(),
+            item: JSON.stringify(items || []),
+            embed_data: JSON.stringify(embed_data || { redirecturl: callback_url }),
+            amount: Number(amount),
+            callback_url,
+            description: description,
+        };
+
+        const dataStr =
+            zaloConfig.app_id + '|' + order.app_trans_id + '|' + order.app_user + '|' + order.amount + '|' + order.app_time + '|' + order.embed_data + '|' + order.item;
+        order.mac = CryptoJS.HmacSHA256(dataStr, zaloConfig.key1).toString();
+
+        console.log('[ZaloPay] PAYMENT DEBUG', { order, dataStr });
         const result = await axios.post(zaloConfig.endpoint, null, { params: order });
         console.log('[ZaloPay] Payment response:', result.data);
         return res.status(200).json(result.data);
@@ -206,30 +280,77 @@ app.post('/zalo/payment', async (req, res) => {
     }
 });
 
-app.post('/zalo/callback', (req, res) => {
-    console.log('[ZaloPay] Request body:', req.body);
+app.post('/zalo/callback', async (req, res) => {
+    console.log('[ZaloPay] CALLBACK RECEIVED - headers:', req.headers);
+    console.log('[ZaloPay] CALLBACK RECEIVED - raw body:', req.body);
+
     let result = {};
-    console.log('[ZaloPay] Callback body:', req.body);
     try {
-        let dataStr = req.body.data;
-        let reqMac = req.body.mac;
-        let mac = CryptoJS.HmacSHA256(dataStr, zaloConfig.key2).toString();
-        if (reqMac !== mac) {
-            result.return_code = -1;
-            result.return_message = 'mac not equal';
-        } else {
-            let dataJson = JSON.parse(dataStr);
-            console.log("[ZaloPay] update order's status = success where app_trans_id =", dataJson['app_trans_id']);
-            result.return_code = 1;
-            result.return_message = 'success';
+        const dataStr = req.body.data || req.body.dataStr || req.body.payload || null;
+        const reqMac = req.body.mac || req.body.sign || null;
+
+        console.log('[ZaloPay] dataStr found:', !!dataStr, 'mac found:', !!reqMac);
+
+        if (dataStr && reqMac) {
+            const computedMac = CryptoJS.HmacSHA256(dataStr, zaloConfig.key2).toString();
+            console.log('[ZaloPay] computed mac:', computedMac);
+            if (computedMac !== reqMac) {
+                console.warn('[ZaloPay] MAC mismatch - callback rejected');
+                result.return_code = -1;
+                result.return_message = 'mac not equal';
+                return res.json(result);
+            }
         }
+
+        let dataJson = null;
+        if (dataStr) {
+            try {
+                dataJson = typeof dataStr === 'string' ? JSON.parse(dataStr) : dataStr;
+            } catch (e) {
+                console.warn('[ZaloPay] failed to parse dataStr as JSON, using raw string');
+                dataJson = { raw: dataStr };
+            }
+        } else {
+            dataJson = { ...req.body };
+        }
+
+        console.log('[ZaloPay] parsed callback data:', dataJson);
+
+        const appTransId = dataJson.app_trans_id || dataJson.appTransId || dataJson.app_trans || null;
+        const zpTransId = dataJson.zp_trans_id || dataJson.zpTransId || dataJson.zp_trans || null;
+        const returnCode = Number(dataJson.return_code ?? dataJson.returnCode ?? dataJson.rc ?? 0);
+        const serverTime = dataJson.server_time ?? dataJson.serverTime ?? null;
+
+        console.log('[ZaloPay] extracted => appTransId:', appTransId, 'zpTransId:', zpTransId, 'return_code:', returnCode, 'server_time:', serverTime);
+
+        // Consider success when:
+        // - explicit return_code === 1 OR
+        // - zp_trans_id exists (callback from gateway) OR
+        // - server_time present (callback timestamp) AND appTransId exists
+        const success = (returnCode === 1) || (!!zpTransId && !!appTransId) || (!!serverTime && !!appTransId);
+
+        if (success && appTransId) {
+            try {
+                await markOrderPaid(appTransId, 'zalopay', String(zpTransId || ''));
+                console.log(`[ZaloPay] markOrderPaid called for ${appTransId} zp_trans_id=${zpTransId}`);
+            } catch (e) {
+                console.error('[ZaloPay] markOrderPaid error:', e?.message || e);
+            }
+        } else {
+            console.log('[ZaloPay] callback not-success or missing appTransId:', { returnCode, appTransId, zpTransId, serverTime });
+        }
+
+        // Ack so gateway won't retry
+        result.return_code = 1;
+        result.return_message = 'success';
     } catch (ex) {
-        console.log('[ZaloPay] callback error:', ex.message);
+        console.error('[ZaloPay] callback handler error:', ex);
         result.return_code = 0;
-        result.return_message = ex.message;
+        result.return_message = String(ex?.message || ex);
     }
-    res.json(result);
+    return res.json(result);
 });
+
 
 app.post('/zalo/check-status-order', async (req, res) => {
     console.log('[ZaloPay] Request body:', req.body);
@@ -320,30 +441,41 @@ const vnpayConfig = {
 
 // Tạo link thanh toán VNPay (POST)
 app.post('/vnpay/create_payment_url', async (req, res) => {
-    const vnpay = new VNPay({ ...vnpayConfig, loggerFn: ignoreLogger });
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const vnpayResponse = await vnpay.buildPaymentUrl({
-        vnp_Amount: 50000,
-        vnp_IpAddr: '127.0.0.1',
-        vnp_TxnRef: `${Date.now()}${Math.floor(Math.random() * 1000)}`,
-        vnp_OrderInfo: '1234569',
-        vnp_OrderType: ProductCode.Other,
-        vnp_ReturnUrl: 'http://localhost:3002/vnpay/check-payment',
-        vnp_Locale: VnpLocale.VN,
-        vnp_CreateDate: dateFormat(new Date()),
-        vnp_ExpireDate: dateFormat(tomorrow),
-    });
-    const urlObj = new URL(vnpayResponse);
-    const params = urlObj.searchParams;
-    console.log('--- Thông tin giao dịch tạo mới ---');
-    console.log('vnp_TxnRef:', params.get('vnp_TxnRef'));
-    console.log('vnp_Amount:', params.get('vnp_Amount'));
-    console.log('vnp_CreateDate:', params.get('vnp_CreateDate'));
-    console.log('vnp_OrderInfo:', params.get('vnp_OrderInfo'));
-    console.log('paymentUrl:', vnpayResponse);
-    console.log('-----------------------------------');
-    return res.status(201).json(vnpayResponse);
+    try {
+        const vnpay = new VNPay({ ...vnpayConfig, loggerFn: ignoreLogger });
+
+        const {
+            amount = 50000,
+            orderInfo = 'Thanh toan MegaTrip',
+            returnUrl = 'http://localhost:3002/vnpay/check-payment',
+            locale = VnpLocale.VN,
+            orderType = ProductCode.Other,
+            expireDays = 1,
+            txnRef // optional provided by client
+        } = req.body || {};
+
+        const txnRefVal = txnRef || `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + (Number(expireDays) || 1));
+
+        const vnpayResponse = await vnpay.buildPaymentUrl({
+            vnp_Amount: Number(amount),
+            vnp_IpAddr: req.ip || '127.0.0.1',
+            vnp_TxnRef: txnRefVal,
+            vnp_OrderInfo: orderInfo,
+            vnp_OrderType: orderType,
+            vnp_ReturnUrl: returnUrl,
+            vnp_Locale: locale,
+            vnp_CreateDate: dateFormat(new Date()),
+            vnp_ExpireDate: dateFormat(tomorrow),
+        });
+
+        console.log('VNPay paymentUrl created:', vnpayResponse);
+        return res.status(201).json({ paymentUrl: vnpayResponse, vnp_TxnRef: txnRefVal });
+    } catch (err) {
+        console.error('VNPay create_payment_url error:', err);
+        return res.status(500).json({ error: err.message });
+    }
 });
 
 // Query trạng thái thanh toán: POST /vnpay/querydr
