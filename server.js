@@ -245,14 +245,40 @@ app.post('/zalo/payment', async (req, res) => {
             amount = 50000,
             description = 'Thanh toán MegaTrip',
             app_user = 'user123',
-            // callback_url = 'http://localhost:3000/thanh-toan-thanh-cong',
             callback_url = 'https://cb138524480d.ngrok-free.app/zalo/callback',
             embed_data = {},
-            items = []
+            items = [],
+            // FE sends orderId (createdOrder.orderNumber or _id)
+            orderId
         } = req.body;
 
-        const transID = Math.floor(Math.random() * 1000000);
-        const app_trans_id = req.body.app_trans_id || `${moment().format('YYMMDD')}_${transID}`;
+        // ensure embed_data contains internal order ref
+        if (orderId) embed_data.orderNumber = embed_data.orderNumber || orderId;
+
+        // Derive app_trans_id for Zalo:
+        // - if orderId starts with 'ORD_' strip that prefix for Zalo
+        // - try to form YYMMDD_suffix when possible; otherwise generate YYMMDD_random
+        let provided = null;
+        if (orderId) provided = String(orderId).startsWith('ORD_') ? String(orderId).replace(/^ORD_/, '') : String(orderId);
+
+        const appTransRegex = /^[0-9]{6}_[0-9A-Za-z]+$/;
+        let app_trans_id = null;
+
+        if (provided && appTransRegex.test(String(provided))) {
+            app_trans_id = String(provided);
+        } else if (provided) {
+            const m = String(provided).match(/^(\d{4})(\d{2})(\d{2})[-_]?(.+)$/);
+            if (m) {
+                const yyMMdd = `${m[1].slice(2)}${m[2]}${m[3]}`;
+                const suffix = m[4].replace(/[^0-9A-Za-z]/g, '').slice(0, 32) || Math.floor(Math.random() * 900000 + 100000);
+                app_trans_id = `${yyMMdd}_${suffix}`;
+            }
+        }
+
+        if (!app_trans_id) {
+            const rnd = Math.floor(Math.random() * 900000) + 100000;
+            app_trans_id = `${moment().format('YYMMDD')}_${rnd}`;
+        }
 
         const order = {
             app_id: zaloConfig.app_id,
@@ -263,14 +289,14 @@ app.post('/zalo/payment', async (req, res) => {
             embed_data: JSON.stringify(embed_data || { redirecturl: callback_url }),
             amount: Number(amount),
             callback_url,
-            description: description,
+            description,
         };
 
         const dataStr =
             zaloConfig.app_id + '|' + order.app_trans_id + '|' + order.app_user + '|' + order.amount + '|' + order.app_time + '|' + order.embed_data + '|' + order.item;
         order.mac = CryptoJS.HmacSHA256(dataStr, zaloConfig.key1).toString();
 
-        console.log('[ZaloPay] PAYMENT DEBUG', { order, dataStr });
+        console.log('[ZaloPay] PAYMENT DEBUG', { order, dataStr, embed_data, originalOrderId: orderId });
         const result = await axios.post(zaloConfig.endpoint, null, { params: order });
         console.log('[ZaloPay] Payment response:', result.data);
         return res.status(200).json(result.data);
@@ -304,12 +330,8 @@ app.post('/zalo/callback', async (req, res) => {
 
         let dataJson = null;
         if (dataStr) {
-            try {
-                dataJson = typeof dataStr === 'string' ? JSON.parse(dataStr) : dataStr;
-            } catch (e) {
-                console.warn('[ZaloPay] failed to parse dataStr as JSON, using raw string');
-                dataJson = { raw: dataStr };
-            }
+            try { dataJson = typeof dataStr === 'string' ? JSON.parse(dataStr) : dataStr; }
+            catch (e) { dataJson = { raw: dataStr }; }
         } else {
             dataJson = { ...req.body };
         }
@@ -321,26 +343,42 @@ app.post('/zalo/callback', async (req, res) => {
         const returnCode = Number(dataJson.return_code ?? dataJson.returnCode ?? dataJson.rc ?? 0);
         const serverTime = dataJson.server_time ?? dataJson.serverTime ?? null;
 
-        console.log('[ZaloPay] extracted => appTransId:', appTransId, 'zpTransId:', zpTransId, 'return_code:', returnCode, 'server_time:', serverTime);
+        // parse embed_data if present (may be a JSON string)
+        let embeddedOrderNumber = null;
+        if (dataJson.embed_data) {
+            try {
+                const ed = typeof dataJson.embed_data === 'string' ? JSON.parse(dataJson.embed_data) : dataJson.embed_data;
+                embeddedOrderNumber = ed.orderNumber || ed.orderId || null;
+            } catch (e) { /* ignore */ }
+        }
 
-        // Consider success when:
-        // - explicit return_code === 1 OR
-        // - zp_trans_id exists (callback from gateway) OR
-        // - server_time present (callback timestamp) AND appTransId exists
+        console.log('[ZaloPay] extracted => appTransId:', appTransId, 'zpTransId:', zpTransId, 'return_code:', returnCode, 'server_time:', serverTime, 'embed_order:', embeddedOrderNumber);
+
+        // Determine success: treat zp_trans_id or server_time + appTransId as success
         const success = (returnCode === 1) || (!!zpTransId && !!appTransId) || (!!serverTime && !!appTransId);
 
-        if (success && appTransId) {
+        // Resolve order reference:
+        // prefer embed_data.orderNumber; else re-add ORD_ prefix to appTransId
+        let orderRef = embeddedOrderNumber || null;
+        if (!orderRef && appTransId) {
+            const s = String(appTransId);
+            orderRef = s.startsWith('ORD_') ? s : `ORD_${s}`;
+        }
+
+        console.log('[ZaloPay] resolved orderRef:', orderRef);
+
+        if (success && orderRef) {
             try {
-                await markOrderPaid(appTransId, 'zalopay', String(zpTransId || ''));
-                console.log(`[ZaloPay] markOrderPaid called for ${appTransId} zp_trans_id=${zpTransId}`);
+                await markOrderPaid(orderRef, 'zalopay', String(zpTransId || ''));
+                console.log(`[ZaloPay] markOrderPaid called for ${orderRef} zp_trans_id=${zpTransId}`);
             } catch (e) {
                 console.error('[ZaloPay] markOrderPaid error:', e?.message || e);
             }
         } else {
-            console.log('[ZaloPay] callback not-success or missing appTransId:', { returnCode, appTransId, zpTransId, serverTime });
+            console.log('[ZaloPay] callback not-success or missing orderRef:', { returnCode, appTransId, zpTransId, serverTime, embeddedOrderNumber });
         }
 
-        // Ack so gateway won't retry
+        // acknowledge so gateway won't retry
         result.return_code = 1;
         result.return_message = 'success';
     } catch (ex) {
