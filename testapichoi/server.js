@@ -1952,3 +1952,246 @@ app.post('/api/upload', upload.array('images', 10), async (req, res) => {
     return res.status(500).json({ success: false, message: err.message || 'Upload failed' });
   }
 });
+
+// api đơn hàng
+const crypto = require('crypto'); // ensure available
+
+const OrderItemSchema = new mongoose.Schema({
+  itemId: { type: String, default: null },
+  type: { type: String, default: 'unknown' },
+  name: { type: String, required: true },
+  sku: { type: String, default: null },
+  quantity: { type: Number, default: 1, min: 1 },
+  unitPrice: { type: Number, default: 0, min: 0 },
+  subtotal: { type: Number, default: 0, min: 0 }
+}, { _id: false });
+
+const DiscountSchema = new mongoose.Schema({
+  code: String,
+  name: String,
+  amount: { type: Number, default: 0, min: 0 }
+}, { _id: false });
+
+const TimelineSchema = new mongoose.Schema({
+  ts: { type: Date, default: Date.now },
+  text: String,
+  meta: { type: mongoose.Schema.Types.Mixed, default: {} }
+}, { _id: false });
+
+const OrderSchema = new mongoose.Schema({
+  orderNumber: { type: String, index: true, unique: true, sparse: true },
+  customerName: { type: String, required: true },
+  customerEmail: { type: String, default: '' },
+  customerPhone: { type: String, default: '' },
+  customerAddress: { type: String, default: '' },
+  items: { type: [OrderItemSchema], default: [] },
+  subtotal: { type: Number, default: 0, min: 0 },
+  discounts: { type: [DiscountSchema], default: [] },
+  fees: { type: [Object], default: [] },
+  tax: { type: Number, default: 0, min: 0 },
+  total: { type: Number, default: 0, min: 0 },
+  paymentMethod: { type: String, default: 'unknown' },
+  paymentStatus: { type: String, enum: ['pending', 'paid', 'failed', 'refunded'], default: 'pending' },
+  orderStatus: { type: String, enum: ['pending', 'confirmed', 'processing', 'completed', 'cancelled'], default: 'pending' },
+  // gateway-specific transaction ids
+  transId: { type: String, default: null },     // MoMo
+  zp_trans_id: { type: String, default: null }, // ZaloPay
+  paymentReference: { type: String, default: null },
+  timeline: { type: [TimelineSchema], default: [] },
+  notes: { type: [String], default: [] },
+  metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}, { collection: 'orders' });
+
+// ensure updatedAt
+OrderSchema.pre('save', function (next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+// generate orderNumber if missing: ORD-YYYYMMDD-<6HEX>, try multiple times
+OrderSchema.pre('validate', async function (next) {
+  try {
+    if (this.orderNumber && String(this.orderNumber).trim()) return next();
+    const date = new Date();
+    const datePart = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+    const maxTries = 6;
+    for (let i = 0; i < maxTries; i++) {
+      const rand = crypto.randomBytes(3).toString('hex').toUpperCase();
+      const candidate = `ORD-${datePart}-${rand}`;
+      const exists = await this.constructor.countDocuments({ orderNumber: candidate }).limit(1);
+      if (!exists) {
+        this.orderNumber = candidate;
+        return next();
+      }
+    }
+    // fallback timestamp suffix
+    this.orderNumber = `ORD-${datePart}-${Date.now().toString().slice(-8)}`;
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+});
+
+const Order = mongoose.model('Order', OrderSchema);
+
+// List orders with filters, pagination, sort
+app.get('/api/orders', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.max(1, parseInt(req.query.pageSize) || 20);
+    const q = req.query.q ? String(req.query.q).trim() : '';
+    const paymentStatus = req.query.paymentStatus;
+    const orderStatus = req.query.orderStatus;
+
+    const filter = {};
+    if (q) {
+      const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ orderNumber: re }, { customerName: re }, { customerEmail: re }, { customerPhone: re }];
+    }
+    if (paymentStatus) filter.paymentStatus = paymentStatus;
+    if (orderStatus) filter.orderStatus = orderStatus;
+
+    const total = await Order.countDocuments(filter);
+    const data = await Order.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+
+    return res.json({ data, pagination: { total, page, pageSize } });
+  } catch (err) {
+    console.error('GET /api/orders error:', err);
+    return res.status(500).json({ error: 'Failed to list orders', details: err.message });
+  }
+});
+
+// Get single order by id or orderNumber
+app.get('/api/orders/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      order = await Order.findById(id).lean();
+    }
+    if (!order) {
+      order = await Order.findOne({ orderNumber: id }).lean();
+    }
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    return res.json(order);
+  } catch (err) {
+    console.error('GET /api/orders/:id error:', err);
+    return res.status(500).json({ error: 'Failed to fetch order', details: err.message });
+  }
+});
+
+// Create order
+app.post('/api/orders', async (req, res) => {
+  try {
+    const payload = req.body || {};
+    // basic normalization
+    payload.subtotal = Number(payload.subtotal || 0);
+    payload.tax = Number(payload.tax || 0);
+    payload.total = Number(payload.total || payload.subtotal - (payload.discount || 0) + (payload.tax || 0));
+    const order = new Order(payload);
+    await order.save();
+    return res.status(201).json(order);
+  } catch (err) {
+    console.error('POST /api/orders error:', err);
+    return res.status(400).json({ error: 'Failed to create order', details: err.message });
+  }
+});
+
+// Update order by id or orderNumber
+app.put('/api/orders/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const payload = req.body || {};
+    // find doc by _id or orderNumber
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      order = await Order.findById(id);
+    }
+    if (!order) order = await Order.findOne({ orderNumber: id });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    // apply updates: allow payment fields to be updated
+    const allowed = ['customerName', 'customerEmail', 'customerPhone', 'customerAddress', 'items', 'subtotal', 'discounts', 'fees', 'tax', 'total', 'paymentMethod', 'paymentStatus', 'orderStatus', 'transId', 'zp_trans_id', 'paymentReference', 'metadata', 'notes'];
+    for (const k of allowed) {
+      if (typeof payload[k] !== 'undefined') order[k] = payload[k];
+    }
+    // push timeline entry if provided
+    if (payload.timeline && Array.isArray(payload.timeline)) {
+      order.timeline = order.timeline.concat(payload.timeline);
+    }
+    await order.save();
+    return res.json(order);
+  } catch (err) {
+    console.error('PUT /api/orders/:id error:', err);
+    return res.status(400).json({ error: 'Failed to update order', details: err.message });
+  }
+});
+
+// Partial update (patch)
+app.patch('/api/orders/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const payload = req.body || {};
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(id)) order = await Order.findById(id);
+    if (!order) order = await Order.findOne({ orderNumber: id });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    Object.keys(payload).forEach(k => { order[k] = payload[k]; });
+    await order.save();
+    return res.json(order);
+  } catch (err) {
+    console.error('PATCH /api/orders/:id error:', err);
+    return res.status(400).json({ error: 'Failed to patch order', details: err.message });
+  }
+});
+
+// Delete order
+app.delete('/api/orders/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let removed = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      removed = await Order.findByIdAndDelete(id).lean();
+    }
+    if (!removed) {
+      removed = await Order.findOneAndDelete({ orderNumber: id }).lean();
+    }
+    if (!removed) return res.status(404).json({ error: 'Order not found' });
+    return res.json({ success: true, id: removed._id || removed.orderNumber });
+  } catch (err) {
+    console.error('DELETE /api/orders/:id error:', err);
+    return res.status(500).json({ error: 'Failed to delete order', details: err.message });
+  }
+});
+
+// helper route: mark paid (for internal use)
+app.post('/api/orders/:id/mark-paid', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { method = 'unknown', txnId = null } = req.body || {};
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(id)) order = await Order.findById(id);
+    if (!order) order = await Order.findOne({ orderNumber: id });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    order.paymentStatus = 'paid';
+    order.orderStatus = 'confirmed';
+    if (method === 'momo') order.transId = txnId || order.transId;
+    else if (method === 'zalopay') order.zp_trans_id = txnId || order.zp_trans_id;
+    else order.paymentReference = txnId || order.paymentReference;
+
+    order.timeline.push({ text: `Marked paid via ${method}`, meta: { txnId } });
+    await order.save();
+    return res.json({ ok: true, order });
+  } catch (err) {
+    console.error('POST /api/orders/:id/mark-paid error:', err);
+    return res.status(500).json({ error: 'Failed to mark paid', details: err.message });
+  }
+});
