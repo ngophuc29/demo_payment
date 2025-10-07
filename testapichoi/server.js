@@ -107,7 +107,7 @@ async function uploadEmbeddedImagesInHtml(html, opts = {}) {
 
     // start server only after successful DB connection
     app.listen(port, () => {
-      console.log(`Server bus ,promotion,order listening on port ${port}`);
+      console.log(`Server bus ,promotion,order,support listening on port ${port}`);
     });
   } catch (err) {
     console.error('MongoDB connection error:', err);
@@ -2224,6 +2224,40 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
+app.get('/api/orders/customer/:customerId', async (req, res) => {
+  try {
+    const customerId = String(req.params.customerId || '').trim();
+    if (!customerId) return res.status(400).json({ error: 'customerId required' });
+
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.max(1, parseInt(req.query.pageSize) || 20);
+    const paymentStatus = req.query.paymentStatus;
+    const orderStatus = req.query.orderStatus;
+    const q = req.query.q ? String(req.query.q).trim() : '';
+
+    const filter = { customerId };
+
+    if (paymentStatus) filter.paymentStatus = paymentStatus;
+    if (orderStatus) filter.orderStatus = orderStatus;
+    if (q) {
+      const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ orderNumber: re }, { customerName: re }, { customerEmail: re }, { customerPhone: re }];
+    }
+
+    const total = await Order.countDocuments(filter);
+    const data = await Order.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+
+    return res.json({ data, pagination: { total, page, pageSize } });
+  } catch (err) {
+    console.error('GET /api/orders/customer/:customerId error:', err);
+    return res.status(500).json({ error: 'Failed to fetch orders by customer', details: err.message });
+  }
+});
+
 // Update order by id or orderNumber
 app.put('/api/orders/:id', async (req, res) => {
   try {
@@ -2384,5 +2418,388 @@ app.post('/api/orders/:id/mark-paid', async (req, res) => {
   } catch (err) {
     console.error('POST /api/orders/:id/mark-paid error:', err);
     return res.status(500).json({ error: 'Failed to mark paid', details: err.message });
+  }
+});
+
+
+
+
+// api hỗ trợ khách hàng
+
+/*
+ Support Tickets API
+ - categories (type): technical, billing, account, general, complaint
+ - statuses: new, open, pending, resolved, closed
+ - optional serviceType: flight | bus | tour
+*/
+
+const SUPPORT_TYPES = {
+  technical: 'Kỹ thuật',
+  billing: 'Thanh toán',
+  account: 'Tài khoản',
+  general: 'Chung',
+  complaint: 'Khiếu nại',
+  cancel: 'Hủy đơn',
+};
+
+const SUPPORT_STATUS_LABELS = {
+  new: 'Mới',
+  open: 'Đang xử lý',
+  pending: 'Chờ phản hồi',
+  resolved: 'Đã giải quyết',
+  closed: 'Đã đóng',
+};
+
+const SupportMessageSchema = new mongoose.Schema({
+  authorType: { type: String, enum: ['customer', 'agent'], required: true },
+  authorId: { type: String, default: null },
+  text: { type: String, required: true },
+  attachments: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  createdAt: { type: Date, default: Date.now }
+}, { _id: false });
+
+const SupportTicketSchema = new mongoose.Schema({
+  ticketNumber: { type: String, index: true, unique: true, sparse: true },
+  customerId: { type: String, index: true, default: null },
+
+  // store basic customer contact snapshot on ticket for easier processing
+  customerName: { type: String, default: null },
+  customerEmail: { type: String, default: null },
+  customerPhone: { type: String, default: null },
+
+  serviceType: { type: String, enum: ['flight', 'bus', 'tour'], default: null },
+  type: { type: String, enum: Object.keys(SUPPORT_TYPES), required: true },
+  title: { type: String, required: true },
+  description: { type: String, default: '' },
+
+  // refundInfo groups payment/refund/order reference details
+  refundInfo: {
+    orderRef: { type: String, default: null },
+    transId: { type: String, default: null },
+    zp_trans_id: { type: String, default: null },
+    paymentReference: { type: String, default: null },
+    airlinePenalty: { type: Number, default: 0 },
+    taxes: { type: Number, default: 0 },
+    platformFee: { type: Number, default: 0 },
+    refundAmount: { type: Number, default: 0 },
+    currency: { type: String, default: 'VND' }
+  },
+
+  status: { type: String, enum: Object.keys(SUPPORT_STATUS_LABELS), default: 'new' },
+  assignee: { id: String, name: String, role: String },
+  messages: { type: [SupportMessageSchema], default: [] },
+  metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}, { collection: 'support_tickets' });
+
+SupportTicketSchema.pre('save', function (next) { this.updatedAt = new Date(); next(); });
+
+// generate ticketNumber if missing
+SupportTicketSchema.pre('validate', async function (next) {
+  try {
+    if (this.ticketNumber && String(this.ticketNumber).trim()) return next();
+    const date = new Date();
+    const datePart = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+    const rand = String(Math.floor(Math.random() * 900000) + 100000); // 6 digits
+    this.ticketNumber = `TICKET_${datePart}_${rand}`;
+    return next();
+  } catch (e) { return next(e); }
+});
+
+const SupportTicket = mongoose.model('SupportTicket', SupportTicketSchema);
+
+// Create ticket
+app.post('/api/support', async (req, res) => {
+  try {
+    const body = req.body || {};
+
+    // accept refund/payment snapshot fields and customer contact info from frontend
+    const refundInfoPayload = {
+      orderRef: body.orderRef || body.orderNumber || null,
+      transId: body.transId || null,
+      zp_trans_id: body.zp_trans_id || null,
+      paymentReference: body.paymentReference || null,
+      airlinePenalty: Number(body.airlinePenalty || 0),
+      taxes: Number(body.taxes || 0),
+      platformFee: Number(body.platformFee || 0),
+      refundAmount: Number(body.refundAmount || 0),
+      currency: body.currency || 'VND'
+    };
+
+    const payload = {
+      customerId: body.customerId || body.customer || null,
+      customerName: body.customerName || null,
+      customerEmail: body.customerEmail || null,
+      customerPhone: body.customerPhone || null,
+      serviceType: (['flight', 'bus', 'tour'].includes(body.serviceType) ? body.serviceType : null),
+      type: Object.keys(SUPPORT_TYPES).includes(body.type) ? body.type : 'general',
+      title: String(body.title || '').trim(),
+      description: String(body.description || '').trim(),
+
+      refundInfo: refundInfoPayload,
+      messages: [],
+      metadata: body.metadata || {}
+    };
+    if (!payload.title) return res.status(400).json({ error: 'title_required' });
+
+    // initial message optional
+    if (body.message && String(body.message).trim()) {
+      payload.messages.push({
+        authorType: 'customer',
+        authorId: payload.customerId,
+        text: String(body.message).trim(),
+        attachments: Array.isArray(body.attachments) ? body.attachments : []
+      });
+    }
+
+    const ticket = new SupportTicket(payload);
+    await ticket.save();
+    return res.status(201).json({ ok: true, ticket });
+  } catch (err) {
+    console.error('POST /api/support error', err);
+    return res.status(500).json({ ok: false, error: 'create_failed', details: err.message });
+  }
+});
+
+// List tickets with filters (customer, status, type, serviceType) + pagination
+app.get('/api/support', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.max(1, parseInt(req.query.pageSize) || 20);
+    const customerId = req.query.customerId ? String(req.query.customerId).trim() : null;
+    const status = req.query.status ? String(req.query.status).trim() : null;
+    const type = req.query.type ? String(req.query.type).trim() : null;
+    const serviceType = req.query.serviceType ? String(req.query.serviceType).trim() : null;
+    const q = req.query.q ? String(req.query.q).trim() : null;
+
+    const filter = {};
+    if (customerId) filter.customerId = customerId;
+    if (status && Object.keys(SUPPORT_STATUS_LABELS).includes(status)) filter.status = status;
+    if (type && Object.keys(SUPPORT_TYPES).includes(type)) filter.type = type;
+    if (serviceType && ['flight', 'bus', 'tour'].includes(serviceType)) filter.serviceType = serviceType;
+    if (q) {
+      const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ title: re }, { description: re }, { ticketNumber: re }, { orderRef: re }];
+    }
+
+    const total = await SupportTicket.countDocuments(filter);
+    const data = await SupportTicket.find(filter)
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+
+    // add human labels for convenience
+    const mapped = data.map(d => ({
+      ...d,
+      typeLabel: SUPPORT_TYPES[d.type] || d.type,
+      statusLabel: SUPPORT_STATUS_LABELS[d.status] || d.status,
+    }));
+
+    return res.json({ ok: true, data: mapped, pagination: { total, page, pageSize } });
+  } catch (err) {
+    console.error('GET /api/support error', err);
+    return res.status(500).json({ ok: false, error: 'list_failed', details: err.message });
+  }
+});
+
+// Get single ticket
+app.get('/api/support/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let ticket = null;
+    if (mongoose.Types.ObjectId.isValid(id)) ticket = await SupportTicket.findById(id).lean();
+    if (!ticket) ticket = await SupportTicket.findOne({ ticketNumber: id }).lean();
+    if (!ticket) return res.status(404).json({ ok: false, error: 'not_found' });
+    ticket.typeLabel = SUPPORT_TYPES[ticket.type] || ticket.type;
+    ticket.statusLabel = SUPPORT_STATUS_LABELS[ticket.status] || ticket.status;
+    return res.json({ ok: true, ticket });
+  } catch (err) {
+    console.error('GET /api/support/:id error', err);
+    return res.status(500).json({ ok: false, error: 'fetch_failed', details: err.message });
+  }
+});
+
+// Update ticket (status, assignee, title, description, metadata)
+app.put('/api/support/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const body = req.body || {};
+    let ticket = null;
+    if (mongoose.Types.ObjectId.isValid(id)) ticket = await SupportTicket.findById(id);
+    if (!ticket) ticket = await SupportTicket.findOne({ ticketNumber: id });
+    if (!ticket) return res.status(404).json({ ok: false, error: 'not_found' });
+
+    if (typeof body.status !== 'undefined' && Object.keys(SUPPORT_STATUS_LABELS).includes(body.status)) ticket.status = body.status;
+    if (typeof body.assignee !== 'undefined') ticket.assignee = body.assignee;
+    if (typeof body.title !== 'undefined') ticket.title = String(body.title).trim();
+    if (typeof body.description !== 'undefined') ticket.description = String(body.description).trim();
+    if (typeof body.metadata !== 'undefined') ticket.metadata = Object.assign({}, ticket.metadata || {}, body.metadata);
+
+    await ticket.save();
+
+    // Post-process: if this is a cancel ticket and now resolved -> release tour slots  update order to refunded/cancelled
+    (async () => {
+      try {
+        if (ticket.type === 'cancel' && ticket.status === 'resolved') {
+          const refundInfo = ticket.refundInfo || ticket.metadata?.refundInfo || {};
+          const orderRef = refundInfo.orderRef || ticket.metadata?.orderRef || null;
+          if (orderRef) {
+            // locate order by _id or orderNumber
+            let order = null;
+            if (mongoose.Types.ObjectId.isValid(orderRef)) order = await Order.findById(orderRef);
+            if (!order) order = await Order.findOne({ orderNumber: orderRef });
+
+            if (order) {
+              // release tour slots for tour items (best-effort)
+              const snapshot = order.metadata?.bookingDataSnapshot || {};
+              for (const it of order.items || []) {
+                try {
+                  if (!it || it.type !== 'tour') continue;
+                  const tourId = it.productId || it.itemId;
+                  if (!tourId) continue;
+                  const dateRaw = snapshot.details?.startDateTime ?? snapshot.details?.date ?? order.createdAt;
+                  const dateIso = toDateIso(dateRaw);
+                  if (!dateIso) continue;
+                  // paxCount derivation
+                  let paxCount = 1;
+                  if (Array.isArray(snapshot.details?.passengers)) paxCount = snapshot.details.passengers.length;
+                  else if (snapshot.passengers?.counts) {
+                    const c = snapshot.passengers.counts;
+                    paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
+                  } else if (it.quantity) paxCount = Number(it.quantity) || 1;
+
+                  // call tour-service release endpoint (reuse helper releaseViaHttp)
+                  await releaseViaHttp(tourId, dateIso, paxCount);
+                } catch (e) {
+                  console.error('release slot failed for order item', it, e && e.message ? e.message : e);
+                  // continue other items
+                }
+              }
+
+              // update order status/paymentStatus and append timeline/metadata
+              try {
+                order.paymentStatus = 'refunded';
+                order.orderStatus = 'cancelled';
+                order.timeline = order.timeline || [];
+                order.timeline.push({ ts: new Date(), text: `Cancelled/refunded via support ticket ${ticket.ticketNumber}`, meta: { ticket: ticket.ticketNumber } });
+                order.metadata = order.metadata || {};
+                order.metadata.refundProcessedBy = ticket.ticketNumber;
+                order.metadata.refundInfo = Object.assign({}, order.metadata.refundInfo || {}, refundInfo);
+                await order.save();
+                console.log(`Order ${order.orderNumber || order._id} marked refunded/cancelled by support ${ticket.ticketNumber}`);
+              } catch (e) {
+                console.error('Failed updating order status after support resolve', e);
+              }
+            } else {
+              console.warn('Support resolve: related order not found', orderRef);
+            }
+          } else {
+            console.warn('Support resolve: no orderRef available on ticket', ticket.ticketNumber);
+          }
+        }
+      } catch (e) {
+        console.error('support cancel post-process error', e);
+      }
+    })();
+
+    return res.json({ ok: true, ticket });
+  } catch (err) {
+    console.error('PUT /api/support/:id error', err);
+    return res.status(500).json({ ok: false, error: 'update_failed', details: err.message });
+  }
+});
+
+// Add message to ticket
+app.post('/api/support/:id/messages', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const body = req.body || {};
+    if (!body.text || !String(body.text).trim()) return res.status(400).json({ ok: false, error: 'text_required' });
+
+    let ticket = null;
+    if (mongoose.Types.ObjectId.isValid(id)) ticket = await SupportTicket.findById(id);
+    if (!ticket) ticket = await SupportTicket.findOne({ ticketNumber: id });
+    if (!ticket) return res.status(404).json({ ok: false, error: 'not_found' });
+
+    const msg = {
+      authorType: (body.authorType === 'agent' ? 'agent' : 'customer'),
+      authorId: body.authorId || null,
+      text: String(body.text).trim(),
+      attachments: Array.isArray(body.attachments) ? body.attachments : []
+    };
+
+    ticket.messages = ticket.messages || [];
+    ticket.messages.push(msg);
+
+    // update status heuristics
+    if (msg.authorType === 'customer') {
+      // customer reply -> set to pending (waiting agent) unless already new/open
+      ticket.status = ticket.status === 'new' ? 'open' : 'pending';
+    } else {
+      // agent reply -> reopen if closed/resolved
+      if (ticket.status === 'new' || ticket.status === 'pending') ticket.status = 'open';
+    }
+
+    await ticket.save();
+    return res.json({ ok: true, message: msg, ticket });
+  } catch (err) {
+    console.error('POST /api/support/:id/messages error', err);
+    return res.status(500).json({ ok: false, error: 'message_failed', details: err.message });
+  }
+});
+
+// simple admin bulk close
+app.post('/api/support/bulk', async (req, res) => {
+  try {
+    const { action, ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ ok: false, error: 'ids_required' });
+
+    const objectIds = ids.filter(i => mongoose.Types.ObjectId.isValid(i)).map(i => mongoose.Types.ObjectId(i));
+    const ticketNumbers = ids.filter(i => !mongoose.Types.ObjectId.isValid(i)).map(i => String(i));
+
+    const or = [];
+    if (objectIds.length) or.push({ _id: { $in: objectIds } });
+    if (ticketNumbers.length) or.push({ ticketNumber: { $in: ticketNumbers } });
+    if (or.length === 0) return res.status(400).json({ ok: false, error: 'no_valid_ids' });
+
+    if (action === 'close') {
+      await SupportTicket.updateMany({ $or: or }, { $set: { status: 'closed', updatedAt: new Date() } });
+      return res.json({ ok: true });
+    } else if (action === 'resolve') {
+      await SupportTicket.updateMany({ $or: or }, { $set: { status: 'resolved', updatedAt: new Date() } });
+      return res.json({ ok: true });
+    } else {
+      return res.status(400).json({ ok: false, error: 'unknown_action' });
+    }
+  } catch (err) {
+    console.error('POST /api/support/bulk error', err);
+    return res.status(500).json({ ok: false, error: 'bulk_failed', details: err.message });
+  }
+});
+app.delete('/api/support/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let removed = null;
+
+    // try delete by Mongo _id first
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      removed = await SupportTicket.findByIdAndDelete(id).lean();
+    }
+
+    // fallback: delete by ticketNumber
+    if (!removed) {
+      removed = await SupportTicket.findOneAndDelete({ ticketNumber: id }).lean();
+    }
+
+    if (!removed) {
+      return res.status(404).json({ ok: false, error: 'not_found' });
+    }
+
+    return res.json({ ok: true, id: removed._id || removed.ticketNumber || id });
+  } catch (err) {
+    console.error('DELETE /api/support/:id error', err);
+    return res.status(500).json({ ok: false, error: 'delete_failed', details: err.message });
   }
 });
