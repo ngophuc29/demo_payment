@@ -1957,8 +1957,12 @@ app.post('/api/upload', upload.array('images', 10), async (req, res) => {
 const crypto = require('crypto'); // ensure available
 
 const OrderItemSchema = new mongoose.Schema({
+  // productId: canonical id of product (tour/bus/flight) when provided by client
+  productId: { type: String, default: null, index: true },
+  // itemId: legacy field (booking reference / product id depending on client)
   itemId: { type: String, default: null },
   type: { type: String, default: 'unknown' },
+  // backend requires name: keep required
   name: { type: String, required: true },
   sku: { type: String, default: null },
   quantity: { type: Number, default: 1, min: 1 },
@@ -2095,6 +2099,25 @@ app.post('/api/orders', async (req, res) => {
     payload.subtotal = Number(payload.subtotal || 0);
     payload.tax = Number(payload.tax || 0);
     payload.total = Number(payload.total || payload.subtotal - (payload.discount || 0) + (payload.tax || 0));
+
+    // Backfill/normalize items: accept productId and also set itemId for backward compatibility.
+    if (Array.isArray(payload.items)) {
+      payload.items = payload.items.map(it => {
+        const item = { ...it };
+        // ensure numeric fields are numbers
+        item.quantity = Number(item.quantity || 1);
+        item.unitPrice = Number(item.unitPrice || 0);
+        item.subtotal = Number(item.subtotal || (item.unitPrice * item.quantity));
+        // If client provided productId but left itemId null, set itemId = productId so older clients/DB columns can use it
+        if (!item.itemId && item.productId) {
+          item.itemId = item.productId;
+        }
+        // ensure name exists (schema requires it) - fallback to type if missing
+        if (!item.name) item.name = item.type ? String(item.type) : 'item';
+        return item;
+      });
+    }
+
     const order = new Order(payload);
     await order.save();
     return res.status(201).json(order);
