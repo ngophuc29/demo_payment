@@ -107,7 +107,7 @@ async function uploadEmbeddedImagesInHtml(html, opts = {}) {
 
     // start server only after successful DB connection
     app.listen(port, () => {
-      console.log(`Example app listening on port ${port}`);
+      console.log(`Server bus ,promotion,order listening on port ${port}`);
     });
   } catch (err) {
     console.error('MongoDB connection error:', err);
@@ -1982,8 +1982,83 @@ const TimelineSchema = new mongoose.Schema({
   meta: { type: mongoose.Schema.Types.Mixed, default: {} }
 }, { _id: false });
 
+
+const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:8080';
+
+function toDateIso(v) {
+  try { return (new Date(v)).toISOString().split('T')[0]; } catch { return null; }
+}
+
+async function reserveViaHttp(tourId, dateIso, paxCount) {
+  const r = await fetch(`${TOUR_SERVICE}/api/tours/slots/reserve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tourId, dateIso, paxCount })
+  });
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    throw new Error(`reserve failed ${r.status} ${txt}`);
+  }
+  return r.json();
+}
+
+async function releaseViaHttp(tourId, dateIso, paxCount) {
+  const r = await fetch(`${TOUR_SERVICE}/api/tours/slots/release`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tourId, dateIso, paxCount })
+  });
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    throw new Error(`release failed ${r.status} ${txt}`);
+  }
+  return r.json();
+}
+
+const ORDER_STATUSES_COUNTED = new Set(['pending', 'confirmed', 'processing']);
+const PAYMENT_STATUSES_COUNTED = new Set(['pending', 'paid']);
+
+async function tryReserveSlotsForOrder(order) {
+  const snapshot = order.metadata?.bookingDataSnapshot;
+  if (!snapshot) return [];
+  const reservations = [];
+  for (const it of order.items || []) {
+    if (!it) continue;
+    if (it.type !== 'tour') continue;
+    const tourId = it.productId || it.itemId;
+    if (!tourId) continue;
+    const dateRaw = snapshot.details?.startDateTime ?? snapshot.details?.date;
+    const dateIso = toDateIso(dateRaw);
+    if (!dateIso) continue;
+    // determine paxCount
+    let paxCount = 1;
+    if (Array.isArray(snapshot.details?.passengers)) paxCount = snapshot.details.passengers.length;
+    else if (snapshot.passengers?.counts) {
+      const c = snapshot.passengers.counts;
+      paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
+    } else if (it.quantity) paxCount = Number(it.quantity) || 1;
+
+    // call reserve endpoint
+    await reserveViaHttp(tourId, dateIso, paxCount);
+    reservations.push({ tourId, dateIso, paxCount, itemIndexHint: it.itemId || it.productId });
+  }
+  return reservations;
+}
+
+async function tryReleaseReservationsList(resList) {
+  if (!Array.isArray(resList)) return;
+  for (const r of resList) {
+    try {
+      await releaseViaHttp(r.tourId, r.dateIso, r.paxCount);
+    } catch (e) {
+      console.error('release reservation failed', r, e.message);
+      // continue - best effort
+    }
+  }
+}
 const OrderSchema = new mongoose.Schema({
   orderNumber: { type: String, index: true, unique: true, sparse: true },
+  customerId: { type: String, default: null, index: true },
   customerName: { type: String, required: true },
   customerEmail: { type: String, default: '' },
   customerPhone: { type: String, default: '' },
@@ -2095,24 +2170,21 @@ app.get('/api/orders/:id', async (req, res) => {
 app.post('/api/orders', async (req, res) => {
   try {
     const payload = req.body || {};
-    // basic normalization
+    // temporary default customerId when not provided
+    payload.customerId = payload.customerId || '64e65e8d3d5e2b0c8a3e9f12';
+    // normalization...
     payload.subtotal = Number(payload.subtotal || 0);
     payload.tax = Number(payload.tax || 0);
     payload.total = Number(payload.total || payload.subtotal - (payload.discount || 0) + (payload.tax || 0));
 
-    // Backfill/normalize items: accept productId and also set itemId for backward compatibility.
+    // normalize items etc (existing code)...
     if (Array.isArray(payload.items)) {
       payload.items = payload.items.map(it => {
         const item = { ...it };
-        // ensure numeric fields are numbers
         item.quantity = Number(item.quantity || 1);
         item.unitPrice = Number(item.unitPrice || 0);
         item.subtotal = Number(item.subtotal || (item.unitPrice * item.quantity));
-        // If client provided productId but left itemId null, set itemId = productId so older clients/DB columns can use it
-        if (!item.itemId && item.productId) {
-          item.itemId = item.productId;
-        }
-        // ensure name exists (schema requires it) - fallback to type if missing
+        if (!item.itemId && item.productId) item.itemId = item.productId;
         if (!item.name) item.name = item.type ? String(item.type) : 'item';
         return item;
       });
@@ -2120,6 +2192,31 @@ app.post('/api/orders', async (req, res) => {
 
     const order = new Order(payload);
     await order.save();
+
+    // // Reserve slots only when orderStatus and paymentStatus are in allowed lists
+    // try {
+    //   const shouldCount = ORDER_STATUSES_COUNTED.has(order.orderStatus) && PAYMENT_STATUSES_COUNTED.has(order.paymentStatus);
+    //   if (shouldCount) {
+    //     let reservations = [];
+    //     try {
+    //       reservations = await tryReserveSlotsForOrder(order);
+    //     } catch (err) {
+    //       // rollback any partial reservations
+    //       console.error('Partial reservation failed, releasing previous reservations:', err.message);
+    //       await tryReleaseReservationsList(reservations);
+    //       // optionally remove slotReservations metadata
+    //       // do not fail order creation; but log and notify
+    //     }
+    //     if ((reservations || []).length) {
+    //       order.metadata = order.metadata || {};
+    //       order.metadata.slotReservations = reservations;
+    //       await order.save();
+    //     }
+    //   }
+    // } catch (e) {
+    //   console.error('post-order reservation step error', e);
+    // }
+
     return res.status(201).json(order);
   } catch (err) {
     console.error('POST /api/orders error:', err);
@@ -2156,26 +2253,96 @@ app.put('/api/orders/:id', async (req, res) => {
     return res.status(400).json({ error: 'Failed to update order', details: err.message });
   }
 });
+function shouldReserve(order) {
+  return String(order.paymentStatus) === 'paid' && String(order.orderStatus) === 'confirmed';
+}
 
 // Partial update (patch)
 app.patch('/api/orders/:id', async (req, res) => {
   try {
     const id = req.params.id;
-    const payload = req.body || {};
-    let order = null;
-    if (mongoose.Types.ObjectId.isValid(id)) order = await Order.findById(id);
-    if (!order) order = await Order.findOne({ orderNumber: id });
-    if (!order) return res.status(404).json({ error: 'Order not found' });
+    const existing = await Order.findById(id);
+    if (!existing) return res.status(404).json({ error: 'Order not found' });
 
-    Object.keys(payload).forEach(k => { order[k] = payload[k]; });
-    await order.save();
-    return res.json(order);
+    const prevShouldReserve = shouldReserve(existing);
+
+    // apply incoming updates
+    Object.keys(req.body || {}).forEach(k => { existing[k] = req.body[k]; });
+
+    const newShouldReserve = shouldReserve(existing);
+
+    // moving from reserved-state -> not reserved-state => release using metadata.slotReservations
+    if (prevShouldReserve && !newShouldReserve) {
+      try {
+        const resList = existing.metadata?.slotReservations;
+        if (Array.isArray(resList) && resList.length) {
+          await tryReleaseReservationsList(resList);
+        }
+        if (existing.metadata) existing.metadata.slotReservations = [];
+      } catch (e) {
+        console.error('release on status change failed', e);
+      }
+    }
+
+    // moving into reserved-state => reserve (idempotent)
+    if (!prevShouldReserve && newShouldReserve) {
+      try {
+        existing.metadata = existing.metadata || {};
+        const existingRes = Array.isArray(existing.metadata.slotReservations) ? existing.metadata.slotReservations : [];
+
+        // compute reservations but skip ones already recorded
+        const snapshot = existing.metadata?.bookingDataSnapshot;
+        const reservationsToStore = [];
+
+        for (const it of existing.items || []) {
+          if (!it || it.type !== 'tour') continue;
+          const tourId = it.productId || it.itemId;
+          const dateRaw = snapshot?.details?.startDateTime ?? snapshot?.details?.date;
+          const dateIso = dateRaw ? toDateIso(dateRaw) : null;
+          if (!tourId || !dateIso) continue;
+
+          const already = existingRes.some(r => String(r.tourId) === String(tourId) && String(r.dateIso) === String(dateIso));
+          if (already) continue;
+
+          // determine paxCount
+          let paxCount = 1;
+          if (Array.isArray(snapshot?.details?.passengers)) paxCount = snapshot.details.passengers.length;
+          else if (snapshot?.passengers?.counts) {
+            const c = snapshot.passengers.counts;
+            paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
+          } else if (it.quantity) paxCount = Number(it.quantity) || 1;
+
+          // call reserve
+          try {
+            await reserveViaHttp(tourId, dateIso, paxCount);
+            const rec = { tourId, dateIso, paxCount, createdAt: new Date().toISOString(), status: 'reserved' };
+            reservationsToStore.push(rec);
+          } catch (err) {
+            console.error('reserve on PATCH failed for', { tourId, dateIso, paxCount }, err.message);
+            // on failure, release any partial created in this loop
+            if (reservationsToStore.length) {
+              await tryReleaseReservationsList(reservationsToStore);
+            }
+            // do not block patch; return warning
+            return res.status(409).json({ success: false, message: 'reserve_failed', detail: err.message });
+          }
+        } // end for items
+
+        if (reservationsToStore.length) {
+          existing.metadata.slotReservations = (existing.metadata.slotReservations || []).concat(reservationsToStore);
+        }
+      } catch (e) {
+        console.error('reserve on status change failed', e);
+      }
+    }
+
+    await existing.save();
+    return res.json({ success: true, data: existing });
   } catch (err) {
-    console.error('PATCH /api/orders/:id error:', err);
-    return res.status(400).json({ error: 'Failed to patch order', details: err.message });
+    console.error('PATCH /api/orders/:id error', err);
+    return res.status(500).json({ error: err.message });
   }
 });
-
 // Delete order
 app.delete('/api/orders/:id', async (req, res) => {
   try {

@@ -27,20 +27,63 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
             paymentMethod: method,
             orderStatus: 'confirmed',
         };
-        // gateway-specific transaction id fields
         if (txnId) {
-            if (method === 'momo') {
-                body.transId = txnId;
-            } else if (method === 'zalopay') {
-                body.zp_trans_id = txnId;
-            } else {
-                // generic fallback
-                body.paymentReference = txnId;
-            }
+            if (method === 'momo') body.transId = txnId;
+            else if (method === 'zalopay') body.zp_trans_id = txnId;
+            else body.paymentReference = txnId;
         }
 
+        // update order status in Orders service
         await axios.put(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(orderRef)}`, body, { timeout: 5000 });
         console.log(`Order ${orderRef} updated:`, body);
+
+        // fetch updated order to inspect items/metadata
+        let order = null;
+        try {
+            const resp = await axios.get(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(orderRef)}`, { timeout: 5000 });
+            order = resp.data;
+        } catch (err) {
+            console.warn('markOrderPaid: failed to fetch order details', err.response?.data || err.message);
+        }
+
+        // If order contains tour items, call tour-service to reserve slots
+        if (order && Array.isArray(order.items) && order.items.length) {
+            const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:8080';
+            const snapshot = order.metadata?.bookingDataSnapshot || order.metadata || {};
+            for (const it of order.items) {
+                if (!it || (it.type && String(it.type).toLowerCase() !== 'tour')) continue;
+                const tourId = it.productId || it.itemId;
+                if (!tourId) continue;
+
+                // derive dateIso and paxCount from snapshot (adjust to your snapshot shape)
+                const dateRaw = snapshot.details?.startDateTime ?? snapshot.details?.date ?? snapshot.date;
+                const dateIso = dateRaw ? new Date(dateRaw).toISOString().split('T')[0] : null;
+
+                let paxCount = 1;
+                if (Array.isArray(snapshot.details?.passengers)) {
+                    paxCount = snapshot.details.passengers.length || 1;
+                } else if (snapshot.passengers?.counts) {
+                    const c = snapshot.passengers.counts;
+                    paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
+                } else {
+                    // fallback to order.items quantity if meaningful
+                    paxCount = Number(it.quantity || 1) || 1;
+                }
+
+                if (!dateIso) {
+                    console.warn('markOrderPaid: missing dateIso for tour item', { tourId, orderRef });
+                    continue;
+                }
+
+                try {
+                    await axios.post(`${TOUR_SERVICE}/api/tours/slots/reserve`, { tourId, dateIso, paxCount }, { timeout: 5000 });
+                    console.log(`Reserved ${paxCount} pax for tour ${tourId} on ${dateIso}`);
+                } catch (err) {
+                    console.error(`Failed to reserve slot for tour ${tourId} ${dateIso}:`, err.response?.data || err.message);
+                    // consider retry or compensating logic
+                }
+            }
+        }
     } catch (err) {
         console.error(`Failed to update order ${orderRef} on ${ORDERS_API_BASE}:`, err.response?.data || err.message);
     }
@@ -65,7 +108,9 @@ app.post('/momo/payment', async (req, res) => {
             autoCapture: autoCaptureCfg,
         } = { ...momoConfig, ...req.body };
 
-        const amount = String(amtFromClient || req.body.amount || '10000');
+        // const amount = String(amtFromClient || req.body.amount || '10000');
+        const amount =  '10000'
+
         const partnerCode = partnerCodeFromClient || partnerCodeCfg || momoConfig.partnerCode;
         const accessKey = accessKeyCfg || momoConfig.accessKey;
         const secretKey = secretKeyCfg || momoConfig.secretKey;
@@ -707,5 +752,5 @@ app.post('/vnpay/check-refund-status', async (req, res) => {
 
 
 app.listen(7000, () => {
-    console.log('Server is running at port 7000');
+    console.log('Server Payment is running at port 7000');
 });
