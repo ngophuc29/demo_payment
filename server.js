@@ -245,7 +245,7 @@ app.post('/zalo/payment', async (req, res) => {
             amount = 50000,
             description = 'Thanh toán MegaTrip',
             app_user = 'user123',
-            callback_url = 'https://cb138524480d.ngrok-free.app/zalo/callback',
+            callback_url = 'https://334f29e30799.ngrok-free.app/zalo/callback',
             embed_data = {},
             items = [],
             // FE sends orderId (createdOrder.orderNumber or _id)
