@@ -145,7 +145,9 @@ const DateBookingSchema = new mongoose.Schema({
       reservationId: String,
       orderNumber: String,
       customerId: String,
-      ts: { type: Date, default: Date.now }
+      status: { type: String, enum: ['confirm', 'cancel'], default: 'confirm' }, // NEW: track confirm/cancel
+      ts: { type: Date, default: Date.now },
+      cancelledAt: { type: Date, default: null }
     }, { _id: false })],
     default: []
   },
@@ -1180,13 +1182,14 @@ app.post('/api/buses/:id/slots/reserve', async (req, res) => {
           seatObj.status = 'booked';
           seatObj.reservationId = reservationId || rid;
           // avoid duplicate log if same reservation already present
-          const existsLog = (dbEntry.logSeatBooked || []).some(l => String(l.seatId) === String(seatObj.seatId) && String(l.reservationId) === String(seatObj.reservationId));
+          const existsLog = (dbEntry.logSeatBooked || []).some(l => String(l.seatId) === String(seatObj.seatId) && String(l.reservationId) === String(seatObj.reservationId) && l.status === 'confirm');
           if (!existsLog) {
             dbEntry.logSeatBooked.push({
               seatId: seatObj.seatId,
               reservationId: seatObj.reservationId,
               orderNumber: orderNumber || null,
               customerId: customerId || null,
+              status: 'confirm',
               ts: new Date()
             });
           }
@@ -1206,6 +1209,7 @@ app.post('/api/buses/:id/slots/reserve', async (req, res) => {
               reservationId: rid,
               orderNumber: orderNumber || null,
               customerId: customerId || null,
+              status: 'confirm',
               ts: new Date()
             });
             dbEntry.seatReserved = (dbEntry.seatReserved || 0) + 1;
@@ -1266,19 +1270,31 @@ app.post('/api/buses/:id/slots/release', async (req, res) => {
           const idx = dbEntry.seatmapFill.findIndex(s => (s.seatId === sid || s.label === sid));
           if (idx === -1) continue;
           if (!dbEntry.seatmapFill[idx].status || dbEntry.seatmapFill[idx].status === 'available') continue;
-          dbEntry.logSeatBooked = dbEntry.logSeatBooked.filter(l => !(l.seatId === dbEntry.seatmapFill[idx].seatId && (orderNumber ? String(l.orderNumber) === String(orderNumber) : true)));
+          // mark matching log entries as cancelled (keep record)
+          for (const logEntry of dbEntry.logSeatBooked || []) {
+            if (logEntry.seatId === dbEntry.seatmapFill[idx].seatId && (!orderNumber || String(logEntry.orderNumber) === String(orderNumber))) {
+              if (logEntry.status === 'confirm') {
+                logEntry.status = 'cancel';
+                logEntry.cancelledAt = new Date();
+              }
+            }
+          }
           dbEntry.seatmapFill[idx].status = 'available';
           dbEntry.seatmapFill[idx].reservationId = null;
-          dbEntry.seatReserved = Math.max(0, (dbEntry.seatReserved || 1) - 1);
           released.push(dbEntry.seatmapFill[idx]);
         }
       } else if (reservationId) {
         for (const s of dbEntry.seatmapFill) {
           if (String(s.reservationId) === String(reservationId)) {
+            // mark log entries for this reservation as cancelled (keep them)
+            for (const logEntry of dbEntry.logSeatBooked || []) {
+              if (String(logEntry.reservationId) === String(reservationId) && logEntry.status === 'confirm') {
+                logEntry.status = 'cancel';
+                logEntry.cancelledAt = new Date();
+              }
+            }
             s.status = 'available';
             s.reservationId = null;
-            dbEntry.logSeatBooked = dbEntry.logSeatBooked.filter(l => String(l.reservationId) !== String(reservationId));
-            dbEntry.seatReserved = Math.max(0, (dbEntry.seatReserved || 1) - 1);
             released.push(s);
           }
         }
@@ -1287,19 +1303,28 @@ app.post('/api/buses/:id/slots/release', async (req, res) => {
           if (released.length >= count) break;
           if (s.reservationId) {
             // remove first matching log entry for this seat
-            dbEntry.logSeatBooked = dbEntry.logSeatBooked.filter(l => !(l.seatId === s.seatId && l.reservationId === s.reservationId));
-            s.status = 'available';
-            s.reservationId = null;
-            dbEntry.seatReserved = Math.max(0, (dbEntry.seatReserved || 1) - 1);
-            released.push(s);
+            // mark first confirmed log for this seat as cancelled
+            const idxLog = (dbEntry.logSeatBooked || []).findIndex(l => l.seatId === s.seatId && l.status === 'confirm');
+            if (idxLog !== -1) {
+              dbEntry.logSeatBooked[idxLog].status = 'cancel';
+              dbEntry.logSeatBooked[idxLog].cancelledAt = new Date();
+              s.status = 'available';
+              s.reservationId = null;
+              released.push(s);
+            }
           }
         }
       }
 
+      // dbEntry.seatsTotal = dbEntry.seatmapFill.length;
+      // dbEntry.seatReserved = dbEntry.seatReserved || dbEntry.seatmapFill.filter(s => s.status === 'booked').length;
+      // dbEntry.seatsAvailable = Math.max(0, dbEntry.seatsTotal - dbEntry.seatReserved);
+      // recompute reserved/available based on confirmed log entries and seatmap
       dbEntry.seatsTotal = dbEntry.seatmapFill.length;
-      dbEntry.seatReserved = dbEntry.seatReserved || dbEntry.seatmapFill.filter(s => s.status === 'booked').length;
+      const reservedFromLog = (dbEntry.logSeatBooked || []).filter(l => l.status === 'confirm').length;
+      const reservedFromMap = dbEntry.seatmapFill.filter(s => s.status === 'booked').length;
+      dbEntry.seatReserved = Math.max(reservedFromLog, reservedFromMap);
       dbEntry.seatsAvailable = Math.max(0, dbEntry.seatsTotal - dbEntry.seatReserved);
-
       await doc.save({ session });
       await session.commitTransaction();
       session.endSession();

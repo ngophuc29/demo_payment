@@ -146,13 +146,17 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
                     // rollback previous bus reservations created in this loop (best-effort)
                     for (const r of reservations) {
                         try {
-                            await axios.post(`${BUS_SERVICE}/api/buses/${encodeURIComponent(r.busId)}/slots/release`, {
-                                dateIso: r.dateIso,
-                                reservationId: reservationId,
-                                seats: r.seats || undefined,
-                                count: r.paxCount || 0
-                            }, { timeout: 5000 });
-                            console.log('Rolled back reservation for bus', r.busId);
+                            const body = { dateIso: r.dateIso };
+                            // prefer explicit seats array when available
+                            if (Array.isArray(r.seats) && r.seats.length) body.seats = r.seats;
+                            // fallback: do not rely on count unless bus API supports it; keep as optional
+                            else if (Number.isFinite(Number(r.paxCount)) && Number(r.paxCount) > 0) body.count = Number(r.paxCount);
+                            // use reservationId / orderNumber from the recorded reservation
+                            if (r.reservationId) body.reservationId = r.reservationId;
+                            if (r.orderNumber) body.orderNumber = r.orderNumber;
+
+                            await axios.post(`${BUS_SERVICE}/api/buses/${encodeURIComponent(r.busId)}/slots/release`, body, { timeout: 5000 });
+                            console.log('Rolled back reservation for bus', { busId: r.busId, dateIso: r.dateIso, reservationId: body.reservationId, seats: body.seats, count: body.count });
                         } catch (releaseErr) {
                             console.error('Rollback release failed for', r, releaseErr.response?.data || releaseErr.message);
                         }
