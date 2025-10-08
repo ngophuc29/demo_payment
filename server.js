@@ -53,6 +53,7 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
             const snapshot = order.metadata?.bookingDataSnapshot || order.metadata || {};
 
             // reserve for tour items
+            const tourReservations = [];
             for (const it of order.items) {
                 if (!it || (it.type && String(it.type).toLowerCase() !== 'tour')) continue;
                 const tourId = it.productId || it.itemId;
@@ -76,12 +77,31 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
                     continue;
                 }
 
+                const reservationId = order.orderNumber || orderRef;
+                const reqBody = { tourId, dateIso, paxCount, reservationId, orderNumber: order.orderNumber || orderRef, customerId: order.customerId || null };
+
                 try {
-                    await axios.post(`${TOUR_SERVICE}/api/tours/slots/reserve`, { tourId, dateIso, paxCount }, { timeout: 5000 });
-                    console.log(`Reserved ${paxCount} pax for tour ${tourId} on ${dateIso}`);
+                    const resp = await axios.post(`${TOUR_SERVICE}/api/tours/slots/reserve`, reqBody, { timeout: 5000 });
+                    console.log(`Reserved ${paxCount} pax for tour ${tourId} on ${dateIso}`, resp.data);
+                    tourReservations.push({ tourId, dateIso, paxCount, reservationId });
                 } catch (err) {
                     console.error(`Failed to reserve slot for tour ${tourId} ${dateIso}:`, err.response?.data || err.message);
-                    // consider retry or compensating logic
+                    // rollback previous tour reservations (best-effort)
+                    for (const r of tourReservations) {
+                        try {
+                            await axios.post(`${TOUR_SERVICE}/api/tours/slots/release`, {
+                                tourId: r.tourId,
+                                dateIso: r.dateIso,
+                                reservationId: r.reservationId,
+                                orderNumber: order.orderNumber || orderRef
+                            }, { timeout: 5000 });
+                            console.log('Rolled back tour reservation', r);
+                        } catch (releaseErr) {
+                            console.error('Rollback release failed for tour', r, releaseErr.response?.data || releaseErr.message);
+                        }
+                    }
+                    // continue to bus reservation but notify/alert as needed
+                    break;
                 }
             }
 
@@ -166,7 +186,7 @@ app.post('/momo/payment', async (req, res) => {
         } = { ...momoConfig, ...req.body };
 
         // const amount = String(amtFromClient || req.body.amount || '10000');
-        const amount =  '10000'
+        const amount = '10000'
 
         const partnerCode = partnerCodeFromClient || partnerCodeCfg || momoConfig.partnerCode;
         const accessKey = accessKeyCfg || momoConfig.accessKey;
@@ -347,7 +367,7 @@ app.post('/zalo/payment', async (req, res) => {
             amount = 50000,
             description = 'Thanh toán MegaTrip',
             app_user = 'user123',
-            callback_url = 'https://92b9462039e3.ngrok-free.app/zalo/callback',
+            callback_url = 'https://4b3b05071573.ngrok-free.app/zalo/callback',
             embed_data = {},
             items = [],
             // FE sends orderId (createdOrder.orderNumber or _id)

@@ -1136,65 +1136,65 @@ app.post('/api/buses/:id/slots/reserve', async (req, res) => {
       const assigned = [];
       const rid = reservationId || `R_${Date.now().toString().slice(-6)}`;
       if (Array.isArray(seats) && seats.length) {
-                // atomic booking with idempotency: treat seats already booked by SAME reservationId as OK
-                  const seatsRequested = seats.map(s => String(s || '').trim().toUpperCase());
-                const seatMapByUpper = new Map(dbEntry.seatmapFill.map((s, i) => [String(s.seatId || s.label || '').toUpperCase(), i]));
-        
-                  const unavailable = [];
-                const toBookIdx = [];
-                const alreadyAssigned = [];
-        
-                  for (const sidUpper of seatsRequested) {
-                      const idx = seatMapByUpper.get(sidUpper);
-                      if (typeof idx === 'undefined') {
-                          unavailable.push({ seat: sidUpper, reason: 'not_found' });
-                          continue;
-                        }
-                      const cur = dbEntry.seatmapFill[idx];
-                      // available -> will book
-                        if (!cur.status || cur.status === 'available') {
-                            toBookIdx.push(idx);
-                            continue;
-                          }
-                      // already booked/blocked
-                        const curRid = cur.reservationId || null;
-                      // if incoming reservationId matches existing, consider idempotent success
-                        if (reservationId && curRid && String(curRid) === String(reservationId)) {
-                            alreadyAssigned.push(cur);
-                            continue;
-                          }
-                      // otherwise it's a conflict => unavailable
-                        unavailable.push({ seat: sidUpper, reason: 'not_available', currentStatus: cur.status, reservationId: curRid });
-                    }
-        
-                  if (unavailable.length) {
-                      // abort transaction and inform caller which seats conflict
-                        await session.abortTransaction();
-                      session.endSession();
-                      return res.status(409).json({ success: false, error: 'seats_unavailable', details: unavailable });
-                    }
-        
-                  // perform booking for all requested seats that were available
-                  for (const idx of toBookIdx) {
-                      const seatObj = dbEntry.seatmapFill[idx];
-                      seatObj.status = 'booked';
-                      seatObj.reservationId = reservationId || rid;
-                      // avoid duplicate log if same reservation already present
-                        const existsLog = (dbEntry.logSeatBooked || []).some(l => String(l.seatId) === String(seatObj.seatId) && String(l.reservationId) === String(seatObj.reservationId));
-                      if (!existsLog) {
-                          dbEntry.logSeatBooked.push({
- seatId: seatObj.seatId,
-                              reservationId: seatObj.reservationId,
-                              orderNumber: orderNumber || null,
-                              customerId: customerId || null,
-                              ts: new Date()
-                          });
+        // atomic booking with idempotency: treat seats already booked by SAME reservationId as OK
+        const seatsRequested = seats.map(s => String(s || '').trim().toUpperCase());
+        const seatMapByUpper = new Map(dbEntry.seatmapFill.map((s, i) => [String(s.seatId || s.label || '').toUpperCase(), i]));
+
+        const unavailable = [];
+        const toBookIdx = [];
+        const alreadyAssigned = [];
+
+        for (const sidUpper of seatsRequested) {
+          const idx = seatMapByUpper.get(sidUpper);
+          if (typeof idx === 'undefined') {
+            unavailable.push({ seat: sidUpper, reason: 'not_found' });
+            continue;
+          }
+          const cur = dbEntry.seatmapFill[idx];
+          // available -> will book
+          if (!cur.status || cur.status === 'available') {
+            toBookIdx.push(idx);
+            continue;
+          }
+          // already booked/blocked
+          const curRid = cur.reservationId || null;
+          // if incoming reservationId matches existing, consider idempotent success
+          if (reservationId && curRid && String(curRid) === String(reservationId)) {
+            alreadyAssigned.push(cur);
+            continue;
+          }
+          // otherwise it's a conflict => unavailable
+          unavailable.push({ seat: sidUpper, reason: 'not_available', currentStatus: cur.status, reservationId: curRid });
+        }
+
+        if (unavailable.length) {
+          // abort transaction and inform caller which seats conflict
+          await session.abortTransaction();
+          session.endSession();
+          return res.status(409).json({ success: false, error: 'seats_unavailable', details: unavailable });
+        }
+
+        // perform booking for all requested seats that were available
+        for (const idx of toBookIdx) {
+          const seatObj = dbEntry.seatmapFill[idx];
+          seatObj.status = 'booked';
+          seatObj.reservationId = reservationId || rid;
+          // avoid duplicate log if same reservation already present
+          const existsLog = (dbEntry.logSeatBooked || []).some(l => String(l.seatId) === String(seatObj.seatId) && String(l.reservationId) === String(seatObj.reservationId));
+          if (!existsLog) {
+            dbEntry.logSeatBooked.push({
+              seatId: seatObj.seatId,
+              reservationId: seatObj.reservationId,
+              orderNumber: orderNumber || null,
+              customerId: customerId || null,
+              ts: new Date()
+            });
           }
           dbEntry.seatReserved = (dbEntry.seatReserved || 0) + 1;
           assigned.push(seatObj);
         }
         // include seats already booked by same reservationId (idempotent)
-          for (const s of alreadyAssigned) assigned.push(s);
+        for (const s of alreadyAssigned) assigned.push(s);
       } else {
         for (const s of dbEntry.seatmapFill) {
           if (assigned.length >= count) break;
@@ -1984,11 +1984,14 @@ function toDateIso(v) {
   try { return (new Date(v)).toISOString().split('T')[0]; } catch { return null; }
 }
 
-async function reserveViaHttp(tourId, dateIso, paxCount) {
+async function reserveViaHttp(tourId, dateIso, paxCount, reservationId = null, orderNumber = null) {
+  const body = { tourId, dateIso, paxCount: Number(paxCount || 0) };
+  if (reservationId) body.reservationId = reservationId;
+  if (orderNumber) body.orderNumber = orderNumber;
   const r = await fetch(`${TOUR_SERVICE}/api/tours/slots/reserve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tourId, dateIso, paxCount })
+    body: JSON.stringify(body)
   });
   if (!r.ok) {
     const txt = await r.text().catch(() => '');
@@ -1997,11 +2000,14 @@ async function reserveViaHttp(tourId, dateIso, paxCount) {
   return r.json();
 }
 
-async function releaseViaHttp(tourId, dateIso, paxCount) {
+async function releaseViaHttp(tourId, dateIso, reservationId = null, orderNumber = null) {
+  const body = { tourId, dateIso };
+  if (reservationId) body.reservationId = reservationId;
+  if (orderNumber) body.orderNumber = orderNumber;
   const r = await fetch(`${TOUR_SERVICE}/api/tours/slots/release`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tourId, dateIso, paxCount })
+    body: JSON.stringify(body)
   });
   if (!r.ok) {
     const txt = await r.text().catch(() => '');
@@ -2044,7 +2050,15 @@ async function tryReleaseReservationsList(resList) {
   if (!Array.isArray(resList)) return;
   for (const r of resList) {
     try {
-      await releaseViaHttp(r.tourId, r.dateIso, r.paxCount);
+      // prefer reservationId / orderNumber if present
+      const reservationId = r.reservationId || r.orderNumber || null;
+      const orderNumber = r.orderNumber || r.reservationId || null;
+      if (reservationId || orderNumber) {
+        await releaseViaHttp(r.tourId, r.dateIso, reservationId, orderNumber);
+      } else {
+        // fallback: try release by orderNumber if present in r.tourId metadata shape
+        await releaseViaHttp(r.tourId, r.dateIso, null, r.orderNumber || null);
+      }
     } catch (e) {
       console.error('release reservation failed', r, e.message);
       // continue - best effort
@@ -2670,8 +2684,11 @@ app.put('/api/support/:id', async (req, res) => {
                     paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
                   } else if (it.quantity) paxCount = Number(it.quantity) || 1;
 
-                  // call tour-service release endpoint (reuse helper releaseViaHttp)
-                  await releaseViaHttp(tourId, dateIso, paxCount);
+                  // // call tour-service release endpoint (reuse helper releaseViaHttp)
+                  // await releaseViaHttp(tourId, dateIso, paxCount);
+                  // call tour-service release endpoint (use orderNumber/reservationId for idempotent cancel)
+                  const reservationId = order.orderNumber || refundInfo.orderRef || String(order._id);
+                  await releaseViaHttp(tourId, dateIso, reservationId, reservationId);
                 } catch (e) {
                   console.error('release slot failed for order item', it, e && e.message ? e.message : e);
                   // continue other items
