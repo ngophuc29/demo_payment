@@ -4,7 +4,12 @@ const port = 7700
 const cors = require('cors')
 const path = require('path') // <-- existing
 const fs = require('fs') // <-- added
+const axios = require('axios'); // <-- add this
 
+app.get('/airports', (req, res) => {
+  console.log('GET /airports called');
+  res.json(airportsData);
+})
 // --- New: mongoose for DB CRUD ---
 const mongoose = require('mongoose');
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ngophuc2911_db_user:phuc29112003@cluster0.xrujamk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
@@ -115,6 +120,220 @@ async function uploadEmbeddedImagesInHtml(html, opts = {}) {
     process.exit(1);
   }
 })();
+
+
+
+
+const DateSeatSchema = new mongoose.Schema({
+  seatId: { type: String, required: true },
+  label: String,
+  type: String,
+  pos: { r: Number, c: Number },
+  status: { type: String, enum: ['available', 'booked', 'blocked'], default: 'available' },
+  reservationId: { type: String, default: null }
+}, { _id: false });
+
+const DateBookingSchema = new mongoose.Schema({
+  dateIso: { type: String, required: true }, // YYYY-MM-DD
+  seatsTotal: { type: Number, default: 0 },
+  seatsAvailable: { type: Number, default: 0 },
+  seatReserved: { type: Number, default: 0 },
+  // log of seat bookings for audit / release by reservationId or orderNumber
+  logSeatBooked: {
+    type: [new mongoose.Schema({
+      seatId: String,
+      reservationId: String,
+      orderNumber: String,
+      customerId: String,
+      ts: { type: Date, default: Date.now }
+    }, { _id: false })],
+    default: []
+  },
+  seatmapFill: { type: [DateSeatSchema], default: [] }
+}, { _id: false });
+
+const BusSlotSchema = new mongoose.Schema({
+  busId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true, unique: true },
+  dateBookings: { type: [DateBookingSchema], default: [] },
+  createdAt: { type: Date, default: Date.now }
+}, { collection: 'bus_slots' });
+
+const BusSlot = mongoose.model('BusSlot', BusSlotSchema);
+function normalizeDateIso(v) {
+  return toDateIso(v);
+}
+
+// helper: build seatmapFill base from bus.seatMap (reservationId null preserved only if present)
+function buildSeatmapFillFromBus(bus) {
+  const map = Array.isArray(bus.seatMap) ? bus.seatMap : [];
+  return map.map(s => ({
+    seatId: s.seatId || s.label || '',
+    label: s.label || s.seatId || '',
+    type: s.type || 'seat',
+    pos: s.pos || {},
+    status: (s.status === 'booked' || s.status === 'blocked') ? s.status : 'available',
+    reservationId: s.reservationId || null
+  }));
+}
+
+// ensure BusSlot exists for a bus (create per-departure date entries)
+async function ensureBusSlotsForBus(bus) {
+  try {
+    if (!bus) {
+      console.warn('ensureBusSlotsForBus skipped: no bus passed');
+      return;
+    }
+
+    // normalize busId and build safe query id
+    const busIdVal = (bus && bus._id) ? bus._id : bus;
+    let queryBusId = busIdVal;
+    if (mongoose.isValidObjectId(busIdVal)) {
+      // use constructor with `new` to avoid "cannot be invoked without 'new'"
+      queryBusId = new mongoose.Types.ObjectId(String(busIdVal));
+    }
+
+    console.log('ensureBusSlotsForBus start', { busId: String(busIdVal), departureDatesCount: Array.isArray(bus.departureDates) ? bus.departureDates.length : (bus.departureAt ? 1 : 0) });
+
+    const existing = await BusSlot.findOne({ busId: queryBusId }).lean();
+    if (existing) {
+      console.log('ensureBusSlotsForBus: BusSlot already exists for', String(busIdVal));
+      return;
+    }
+
+    const dates = Array.isArray(bus.departureDates) && bus.departureDates.length
+      ? bus.departureDates
+      : (bus.departureAt ? [bus.departureAt] : []);
+
+    const masterSeatmap = buildSeatmapFillFromBus(bus);
+    const seatsTotal = masterSeatmap.length || Number(bus.seatsTotal || 0);
+
+    const dateBookings = (dates || []).map(d => {
+      const dateIso = normalizeDateIso(d);
+      if (!dateIso) return null;
+
+      const initialLog = (masterSeatmap || []).filter(s => s.status === 'booked').map(s => ({
+        seatId: s.seatId,
+        reservationId: s.reservationId || null,
+        orderNumber: null,
+        customerId: null,
+        ts: new Date()
+      }));
+
+      const seatmapFill = masterSeatmap.map(m => {
+        const isBooked = initialLog.some(l => l.seatId === m.seatId);
+        return {
+          ...m,
+          status: isBooked ? 'booked' : 'available',
+          reservationId: isBooked ? (m.reservationId || null) : null
+        };
+      });
+
+      const seatReserved = initialLog.length;
+      const seatsAvailable = Math.max(0, seatsTotal - seatReserved);
+
+      return {
+        dateIso,
+        seatsTotal,
+        seatsAvailable,
+        seatReserved,
+        logSeatBooked: initialLog,
+        seatmapFill
+      };
+    }).filter(Boolean);
+
+    if (dateBookings.length === 0) {
+      console.log('ensureBusSlotsForBus: no dateBookings produced for', String(busIdVal));
+      return;
+    }
+
+    const slotDoc = new BusSlot({ busId: queryBusId, dateBookings });
+    await slotDoc.save();
+    // debug logs to confirm persistence and DB being used
+    try {
+      console.log('BusSlot created for busId', String(busIdVal), 'datesCount', dateBookings.length, 'slotId', String(slotDoc._id));
+      console.log('Mongoose DB name:', mongoose.connection && mongoose.connection.name);
+      // double-check by reading back
+      const check = await BusSlot.findOne({ busId: queryBusId }).lean();
+      if (!check) console.warn('Verification read returned null for saved BusSlot');
+      else console.log('Verification read succeeded, docId:', String(check._id));
+    } catch (e) {
+      console.warn('Post-save verification failed', e && e.message ? e.message : e);
+    }
+    console.log('BusSlot created for busId', String(busIdVal), 'datesCount', dateBookings.length);
+  } catch (err) {
+    console.error('ensureBusSlotsForBus error', err && err.message ? err.message : err);
+  }
+}
+app.get('/api/bus-slots/:busId', async (req, res) => {
+  try {
+    const bid = req.params.busId;
+    let queryId = bid;
+    if (mongoose.Types.ObjectId.isValid(bid)) queryId = new mongoose.Types.ObjectId(String(bid));
+    const doc = await BusSlot.findOne({ busId: queryId }).lean();
+    if (!doc) return res.status(404).json({ error: 'BusSlot not found' });
+    return res.json(doc);
+  } catch (err) {
+    console.error('GET /api/bus-slots/:busId error', err);
+    return res.status(500).json({ error: 'failed', details: err.message });
+  }
+});
+
+// also adjust sync to use same safe conversion and logging
+async function syncBusSlotsForBus(bus) {
+  try {
+    if (!bus) {
+      console.warn('syncBusSlotsForBus skipped: no bus passed');
+      return;
+    }
+    const busIdVal = (bus && bus._id) ? bus._id : bus;
+    let queryBusId = busIdVal;
+    if (mongoose.isValidObjectId(busIdVal)) {
+      queryBusId = new mongoose.Types.ObjectId(String(busIdVal));
+    }
+
+    const slotDoc = await BusSlot.findOne({ busId: queryBusId });
+    if (!slotDoc) {
+      console.log('syncBusSlotsForBus: no BusSlot found for', String(busIdVal));
+      return;
+    }
+
+    const masterSeatmap = buildSeatmapFillFromBus(bus);
+    const seatsTotal = masterSeatmap.length || Number(bus.seatsTotal || 0);
+
+    for (const dbEntry of slotDoc.dateBookings) {
+      const oldById = new Map((dbEntry.seatmapFill || []).map(s => [s.seatId, s]));
+      const newFill = masterSeatmap.map(m => {
+        const old = oldById.get(m.seatId);
+        const status = (old && (old.status === 'booked' || old.status === 'blocked')) ? old.status
+          : (m.status === 'booked' || m.status === 'blocked' ? m.status : 'available');
+        const reservationId = (old && old.reservationId) ? old.reservationId : (m.reservationId || null);
+        return {
+          seatId: m.seatId,
+          label: m.label || m.seatId,
+          type: m.type || 'seat',
+          pos: m.pos || {},
+          status,
+          reservationId
+        };
+      });
+
+      dbEntry.logSeatBooked = (dbEntry.logSeatBooked || []).filter(l => newFill.some(s => s.seatId === l.seatId));
+
+      const reservedCountFromMap = newFill.filter(s => s.status === 'booked' || s.reservationId).length;
+      const reservedCountFromLog = (dbEntry.logSeatBooked || []).length;
+
+      dbEntry.seatsTotal = seatsTotal;
+      dbEntry.seatmapFill = newFill;
+      dbEntry.seatReserved = Math.max(reservedCountFromMap, reservedCountFromLog);
+      dbEntry.seatsAvailable = Math.max(0, dbEntry.seatsTotal - dbEntry.seatReserved);
+    }
+
+    await slotDoc.save();
+    console.log(`Synced BusSlot for bus ${String(busIdVal)}`);
+  } catch (err) {
+    console.error('syncBusSlotsForBus error', err && err.message ? err.message : err);
+  }
+}
 
 // Replace previous BusSchema definition with improved schema + validations
 const SeatSchema = new mongoose.Schema({
@@ -262,375 +481,7 @@ app.get('/', (req, res) => {
   res.send('Hello World!')
 })
 
-const airportsData = {
-  "airports": {
-    "VVBM": {
-      "icao": "VVBM",
-      "iata": "BMV",
-      "name": "Buon Ma Thuot Airport",
-      "city": "Buon Ma Thuot",
-      "state": "Đắk Lắk",
-      "country": "VN",
-      "elevation": 1729,
-      "lat": 12.668299675,
-      "lon": 108.120002747,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVCA": {
-      "icao": "VVCA",
-      "iata": "VCL",
-      "name": "Chu Lai International Airport",
-      "city": "Dung Quat Bay",
-      "state": "Quảng Nam",
-      "country": "VN",
-      "elevation": 10,
-      "lat": 15.4033002853,
-      "lon": 108.706001282,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVCI": {
-      "icao": "VVCI",
-      "iata": "HPH",
-      "name": "Cat Bi International Airport",
-      "city": "Haiphong",
-      "state": "Hải Phòng",
-      "country": "VN",
-      "elevation": 6,
-      "lat": 20.8194007874,
-      "lon": 106.7249984741,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVCL": {
-      "icao": "VVCL",
-      "iata": "",
-      "name": "Cam Ly Airport",
-      "city": "",
-      "state": "Lâm Đồng",
-      "country": "VN",
-      "elevation": 4937,
-      "lat": 11.9502844865,
-      "lon": 108.411004543,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVCM": {
-      "icao": "VVCM",
-      "iata": "CAH",
-      "name": "Ca Mau Airport",
-      "city": "Ca Mau City",
-      "state": "Cà Mau",
-      "country": "VN",
-      "elevation": 6,
-      "lat": 9.1776666667,
-      "lon": 105.177777778,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVCR": {
-      "icao": "VVCR",
-      "iata": "CXR",
-      "name": "Cam Ranh Airport",
-      "city": "Nha Trang",
-      "state": "Khánh Hòa",
-      "country": "VN",
-      "elevation": 40,
-      "lat": 11.9982004166,
-      "lon": 109.21900177,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVCS": {
-      "icao": "VVCS",
-      "iata": "VCS",
-      "name": "Co Ong Airport",
-      "city": "Con Ong",
-      "state": "Bà Rịa-Vũng Tàu",
-      "country": "VN",
-      "elevation": 20,
-      "lat": 8.7318296433,
-      "lon": 106.633003235,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVCT": {
-      "icao": "VVCT",
-      "iata": "VCA",
-      "name": "Tra Noc Airport",
-      "city": "Can Tho",
-      "state": "Cần Thơ",
-      "country": "VN",
-      "elevation": 9,
-      "lat": 10.085100174,
-      "lon": 105.7119979858,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVDB": {
-      "icao": "VVDB",
-      "iata": "DIN",
-      "name": "Dien Bien Phu Airport",
-      "city": "Dien Bien Phu",
-      "state": "Điện Biên",
-      "country": "VN",
-      "elevation": 1611,
-      "lat": 21.3974990845,
-      "lon": 103.008003235,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVDH": {
-      "icao": "VVDH",
-      "iata": "VDH",
-      "name": "Dong Hoi Airport",
-      "city": "Dong Hoi",
-      "state": "Quảng Bình",
-      "country": "VN",
-      "elevation": 59,
-      "lat": 17.515,
-      "lon": 106.590556,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVDL": {
-      "icao": "VVDL",
-      "iata": "DLI",
-      "name": "Lien Khuong Airport",
-      "city": "Dalat",
-      "state": "Lâm Đồng",
-      "country": "VN",
-      "elevation": 3156,
-      "lat": 11.75,
-      "lon": 108.3669967651,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVDN": {
-      "icao": "VVDN",
-      "iata": "DAD",
-      "name": "Da Nang International Airport",
-      "city": "Da Nang",
-      "state": "Đà Nẵng",
-      "country": "VN",
-      "elevation": 33,
-      "lat": 16.0438995361,
-      "lon": 108.1989974976,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVGL": {
-      "icao": "VVGL",
-      "iata": "",
-      "name": "Gia Lam Air Base",
-      "city": "Hanoi",
-      "state": "Hà Nội",
-      "country": "VN",
-      "elevation": 50,
-      "lat": 21.0405006409,
-      "lon": 105.8860015869,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVKP": {
-      "icao": "VVKP",
-      "iata": "",
-      "name": "Kep Air Base",
-      "city": "Kep",
-      "state": "Bắc Giang",
-      "country": "VN",
-      "elevation": 55,
-      "lat": 21.3945999146,
-      "lon": 106.261001587,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVNB": {
-      "icao": "VVNB",
-      "iata": "HAN",
-      "name": "Noi Bai International Airport",
-      "city": "Hanoi",
-      "state": "Hà Nội",
-      "country": "VN",
-      "elevation": 39,
-      "lat": 21.221200943,
-      "lon": 105.8069992065,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVNS": {
-      "icao": "VVNS",
-      "iata": "SQH",
-      "name": "Na-San Airport",
-      "city": "Son La",
-      "state": "Sơn La",
-      "country": "VN",
-      "elevation": 2133,
-      "lat": 21.216999054,
-      "lon": 104.0329971313,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVNT": {
-      "icao": "VVNT",
-      "iata": "NHA",
-      "name": "Nha Trang Air Base",
-      "city": "Nha Trang",
-      "state": "Khánh Hòa",
-      "country": "VN",
-      "elevation": 20,
-      "lat": 12.2274999619,
-      "lon": 109.192001343,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVPB": {
-      "icao": "VVPB",
-      "iata": "HUI",
-      "name": "Phu Bai Airport",
-      "city": "Hue",
-      "state": "Thừa Thiên-Huế",
-      "country": "VN",
-      "elevation": 48,
-      "lat": 16.4015007019,
-      "lon": 107.70300293,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVPC": {
-      "icao": "VVPC",
-      "iata": "UIH",
-      "name": "Phu Cat Airport",
-      "city": "Quy Nhon",
-      "state": "Bình Định",
-      "country": "VN",
-      "elevation": 80,
-      "lat": 13.9549999237,
-      "lon": 109.041999817,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVPK": {
-      "icao": "VVPK",
-      "iata": "PXU",
-      "name": "Pleiku Airport",
-      "city": "Pleiku",
-      "state": "Gia Lai",
-      "country": "VN",
-      "elevation": 2434,
-      "lat": 14.0045003891,
-      "lon": 108.016998291,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVPQ": {
-      "icao": "VVPQ",
-      "iata": "PQC",
-      "name": "Phu Quoc Airport",
-      "city": "Duong Dong",
-      "state": "Kiên Giang",
-      "country": "VN",
-      "elevation": 23,
-      "lat": 10.2270002365,
-      "lon": 103.967002869,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVPR": {
-      "icao": "VVPR",
-      "iata": "PHA",
-      "name": "Phan Rang Airport",
-      "city": "Phan Rang",
-      "state": "Ninh Thuận",
-      "country": "VN",
-      "elevation": 101,
-      "lat": 11.6335000992,
-      "lon": 108.952003479,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVPT": {
-      "icao": "VVPT",
-      "iata": "",
-      "name": "Phan Thiet Airport",
-      "city": "Phan Thiet",
-      "state": "Bình Thuận",
-      "country": "VN",
-      "elevation": 0,
-      "lat": 10.9063997269,
-      "lon": 108.0690002441,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVRG": {
-      "icao": "VVRG",
-      "iata": "VKG",
-      "name": "Rach Gia Airport",
-      "city": "Rach Gia",
-      "state": "Kiên Giang",
-      "country": "VN",
-      "elevation": 7,
-      "lat": 9.9580299723,
-      "lon": 105.132379532,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVTH": {
-      "icao": "VVTH",
-      "iata": "TBB",
-      "name": "Dong Tac Airport",
-      "city": "Tuy Hoa",
-      "state": "Phú Yên",
-      "country": "VN",
-      "elevation": 20,
-      "lat": 13.0495996475,
-      "lon": 109.333999634,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVTS": {
-      "icao": "VVTS",
-      "iata": "SGN",
-      "name": "Tan Son Nhat International Airport",
-      "city": "Ho Chi Minh City",
-      "state": "Hồ Chí Minh",
-      "country": "VN",
-      "elevation": 33,
-      "lat": 10.8187999725,
-      "lon": 106.652000427,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVTX": {
-      "icao": "VVTX",
-      "iata": "THD",
-      "name": "Thọ Xuân Airport",
-      "city": "Thanh Hóa",
-      "state": "Thanh Hóa",
-      "country": "VN",
-      "elevation": 59,
-      "lat": 19.901667,
-      "lon": 105.467778,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVVD": {
-      "icao": "VVVD",
-      "iata": "VDO",
-      "name": "Van Don International Airport",
-      "city": "Vân Đồn",
-      "state": "Quảng Ninh",
-      "country": "VN",
-      "elevation": 26,
-      "lat": 21.117778,
-      "lon": 107.414167,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVVH": {
-      "icao": "VVVH",
-      "iata": "VII",
-      "name": "Vinh Airport",
-      "city": "Vinh",
-      "state": "Nghệ An",
-      "country": "VN",
-      "elevation": 23,
-      "lat": 18.7376003265,
-      "lon": 105.67099762,
-      "tz": "Asia/Ho_Chi_Minh"
-    },
-    "VVVT": {
-      "icao": "VVVT",
-      "iata": "VTG",
-      "name": "Vung Tau Airport",
-      "city": "Vung Tau",
-      "state": "Bà Rịa-Vũng Tàu",
-      "country": "VN",
-      "elevation": 13,
-      "lat": 10.3725004196,
-      "lon": 107.0950012207,
-      "tz": "Asia/Ho_Chi_Minh"
-    }
-  }
-};
 
-app.get('/airports', (req, res) => {
-  console.log('GET /airports called');
-  res.json(airportsData);
-})
 
 // thêm đường dẫn tới 2 file JSON (ở thư mục cha)
 const busRawFile = path.join(__dirname, '..', 'cac_ben_xe_bus_chua_sat_nhap.json')
@@ -641,131 +492,6 @@ const nhaxeFile = path.join(__dirname, '..', 'nhaxekhach.json')
 
 // --- New: đường dẫn tới file loại xe (loaixe.json) ---
 const loaixeFile = path.join(__dirname, '..', 'dsloaixevexere.json')
-
-// route trả về file JSON "chua_sat_nhap" - now reads, logs length if array, returns JSON
-app.get('/bus/cac_ben_xe_bus_chua_sat_nhap', (req, res) => {
-  console.log('GET /bus/cac_ben_xe_bus_chua_sat_nhap called');
-  fs.readFile(busRawFile, 'utf8', (err, data) => {
-    if (err) {
-      console.error('Error reading cac_ben_xe_bus_chua_sat_nhap.json:', err);
-      return res.status(500).json({ error: 'Failed to read file' });
-    }
-    let parsed;
-    try {
-      parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) {
-        console.log(`cac_ben_xe_bus_chua_sat_nhap: array length = ${parsed.length}`);
-      } else if (parsed && parsed.stations && Array.isArray(parsed.stations)) {
-        console.log(`cac_ben_xe_bus_chua_sat_nhap: stations length = ${parsed.stations.length}`);
-      } else {
-        console.log('cac_ben_xe_bus_chua_sat_nhap: parsed but not an array');
-      }
-    } catch (e) {
-      console.warn('Could not parse cac_ben_xe_bus_chua_sat_nhap.json:', e);
-      return res.status(500).json({ error: 'Failed to parse JSON' });
-    }
-    res.json(parsed);
-  });
-});
-
-// route trả về file JSON "sau_sat_nhap" - now reads, logs length if array, returns JSON
-app.get('/bus/cac_ben_xe_bus_sau_sat_nhap', (req, res) => {
-  console.log('GET /bus/cac_ben_xe_bus_sau_sat_nhap called');
-  fs.readFile(busNormalizedFile, 'utf8', (err, data) => {
-    if (err) {
-      console.error('Error reading cac_ben_xe_bus_sau_sat_nhap.json:', err);
-      return res.status(500).json({ error: 'Failed to read file' });
-    }
-    let parsed;
-    try {
-      parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) {
-        console.log(`cac_ben_xe_bus_sau_sat_nhap: array length = ${parsed.length}`);
-      } else if (parsed && parsed.stations && Array.isArray(parsed.stations)) {
-        console.log(`cac_ben_xe_bus_sau_sat_nhap: stations length = ${parsed.stations.length}`);
-      } else {
-        console.log('cac_ben_xe_bus_sau_sat_nhap: parsed but not an array');
-      }
-    } catch (e) {
-      console.warn('Could not parse cac_ben_xe_bus_sau_sat_nhap.json:', e);
-      return res.status(500).json({ error: 'Failed to parse JSON' });
-    }
-    res.json(parsed);
-  });
-})
-
-// --- New: route trả về danh sách nhà xe từ nhaxekhach.json ---
-app.get('/bus/nhaxe', (req, res) => {
-  console.log('GET /nhaxe called');
-  fs.readFile(nhaxeFile, 'utf8', (err, data) => {
-    if (err) {
-      console.error('Error reading nhaxekhach.json:', err);
-      return res.status(500).json({ error: 'Failed to read file' });
-    }
-    try {
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) {
-        console.log(`nhaxekhach: array length = ${parsed.length}`);
-      } else {
-        console.log('nhaxekhach: parsed but not an array');
-      }
-      return res.json(parsed);
-    } catch (e) {
-      console.warn('Could not parse nhaxekhach.json:', e);
-      return res.status(500).json({ error: 'Failed to parse JSON' });
-    }
-  });
-})
-
-// --- New: route trả về toàn bộ loại xe ---
-app.get('/bus/loaixe', (req, res) => {
-  console.log('GET /loaixe called');
-  fs.readFile(loaixeFile, 'utf8', (err, data) => {
-    if (err) {
-      console.error('Error reading loaixe.json:', err);
-      return res.status(500).json({ error: 'Failed to read file' });
-    }
-    try {
-      const parsed = JSON.parse(data);
-      // prefer vehicle_categories key used in dsloaixevexere.json
-      const list = parsed.vehicle_categories || parsed.vehicle_types || parsed;
-      if (Array.isArray(list)) {
-        console.log(`loaixe: vehicle_categories length = ${list.length}`);
-      } else {
-        console.log('loaixe: parsed but vehicle_categories not an array');
-      }
-      return res.json(list);
-    } catch (e) {
-      console.warn('Could not parse loaixe.json:', e);
-      return res.status(500).json({ error: 'Failed to parse JSON' });
-    }
-  });
-});
-
-// --- New: route trả về 1 loại xe theo id ---
-app.get('/bus/loaixe/:id', (req, res) => {
-  const id = req.params.id;
-  console.log(`GET /loaixe/${id} called`);
-  fs.readFile(loaixeFile, 'utf8', (err, data) => {
-    if (err) {
-      console.error('Error reading loaixe.json:', err);
-      return res.status(500).json({ error: 'Failed to read file' });
-    }
-    try {
-      const parsed = JSON.parse(data);
-      // prefer vehicle_categories key
-      const list = parsed.vehicle_categories || parsed.vehicle_types || [];
-      const item = list.find(v => v.id === id);
-      if (!item) {
-        return res.status(404).json({ error: 'Vehicle type not found' });
-      }
-      return res.json(item);
-    } catch (e) {
-      console.warn('Could not parse loaixe.json:', e);
-      return res.status(500).json({ error: 'Failed to parse JSON' });
-    }
-  });
-});
 
 // --- New API: CRUD for buses ---
 // List with pagination & filters: GET /api/buses
@@ -960,6 +686,14 @@ app.post('/api/buses', async (req, res) => {
     // Create and save
     const bus = new Bus(payload);
     await bus.save();
+
+    // ensure BusSlot exists for this bus (create slot docs for departureDates)
+    try {
+      await ensureBusSlotsForBus(bus);
+    } catch (e) {
+      console.warn('ensureBusSlotsForBus failed after create', e && e.message ? e.message : e);
+    }
+
     return res.status(201).json(bus);
   } catch (err) {
     console.error('POST /api/buses error:', err);
@@ -1013,6 +747,16 @@ app.put('/api/buses/:id', async (req, res) => {
     const bus = await Bus.findByIdAndUpdate(req.params.id, payload, { new: true, runValidators: true }).lean();
     if (!bus) return res.status(404).json({ error: 'Bus not found' });
 
+    // ensure/sync BusSlot after bus update (create if missing and sync layout/reservations)
+    try {
+      // ensureBusSlotsForBus accepts both mongoose doc and plain object (uses _id)
+      await ensureBusSlotsForBus(bus);
+      await syncBusSlotsForBus(bus);
+    } catch (e) {
+      console.warn('syncBusSlotsForBus failed after update', e && e.message ? e.message : e);
+    }
+
+
     // ensure adultPrice/childPrice exist in response
     if (typeof bus.adultPrice !== 'number') bus.adultPrice = 0;
     if (typeof bus.childPrice !== 'number') bus.childPrice = bus.childPrice || 0;
@@ -1046,6 +790,19 @@ app.delete('/api/buses/:id', async (req, res) => {
     }
 
     if (!removed) return res.status(404).json({ error: 'Bus not found' });
+    // remove associated BusSlot doc (best-effort)
+    try {
+      if (removed._id) {
+        await BusSlot.deleteOne({ busId: removed._id }).catch(e => console.warn('delete BusSlot failed', e && e.message ? e.message : e));
+      } else if (removed.busCode) {
+        // try to find by busCode -> bus._id earlier; best-effort skip otherwise
+        const maybe = await Bus.findOne({ busCode: removed.busCode }).lean();
+        if (maybe && maybe._id) await BusSlot.deleteOne({ busId: maybe._id }).catch(() => { });
+      }
+    } catch (e) {
+      console.warn('Failed to delete BusSlot for removed bus', e && e.message ? e.message : e);
+    }
+
 
     return res.json({ success: true, id: removed._id || removed.id || id });
   } catch (err) {
@@ -1119,7 +876,7 @@ app.post('/api/buses/:id/fake_bookings', async (req, res) => {
 
     // find available seats
     const availableSeatsIdx = [];
-    for (let i = 0; i < bus.seatMap.length; i++) {
+    for (let i = 0; i < bus.seatMap.length; i) {
       const s = bus.seatMap[i];
       if (!s.status || s.status === 'available') availableSeatsIdx.push(i);
     }
@@ -1321,7 +1078,243 @@ app.get('/api/client/buses', async (req, res) => {
   }
 });
 
+app.post('/api/buses/:id/slots/reserve', async (req, res) => {
+  try {
+    const busIdParam = req.params.id;
+    const { dateIso: rawDate, seats, count = 0, reservationId, orderNumber, customerId } = req.body || {};
+    const dateIso = normalizeDateIso(rawDate);
+    if (!dateIso) return res.status(400).json({ error: 'dateIso_required' });
+    if ((!Array.isArray(seats) || seats.length === 0) && (!Number.isInteger(count) || count <= 0)) {
+      return res.status(400).json({ error: 'seats_or_count_required' });
+    }
 
+    // resolve bus
+    let bus = null;
+    if (mongoose.Types.ObjectId.isValid(busIdParam)) bus = await Bus.findById(busIdParam).lean();
+    if (!bus) bus = await Bus.findOne({ busCode: busIdParam }).lean();
+    if (!bus) return res.status(404).json({ error: 'bus_not_found' });
+
+    // upsert slot doc if missing
+    let slotDoc = await BusSlot.findOne({ busId: bus._id });
+    if (!slotDoc) {
+      // create initial from bus
+      const init = (Array.isArray(bus.departureDates) ? bus.departureDates : [bus.departureAt]).map(d => {
+        const iso = normalizeDateIso(d);
+        if (!iso) return null;
+        const seatmap = buildSeatmapFillFromBus(bus);
+        const seatsTotal = (bus.seatMap || []).length || Number(bus.seatsTotal || 0);
+        const log = (seatmap || []).filter(s => s.status === 'booked').map(s => ({
+          seatId: s.seatId,
+          reservationId: s.reservationId || null,
+          orderNumber: null,
+          customerId: null,
+          ts: new Date()
+        }));
+        const seatReserved = log.length;
+        return {
+          dateIso: iso,
+          seatmapFill: seatmap,
+          seatsTotal,
+          seatReserved,
+          seatsAvailable: Math.max(0, seatsTotal - seatReserved),
+          logSeatBooked: log
+        };
+      }).filter(Boolean);
+      slotDoc = new BusSlot({ busId: bus._id, dateBookings: init });
+      await slotDoc.save();
+
+    }
+
+    // transactionally update the dateBooking entry
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const doc = await BusSlot.findOne({ busId: bus._id }).session(session);
+      const dbEntry = (doc.dateBookings || []).find(d => d.dateIso === dateIso);
+      if (!dbEntry) throw new Error('date_slot_not_found');
+
+      const assigned = [];
+      const rid = reservationId || `R_${Date.now().toString().slice(-6)}`;
+      if (Array.isArray(seats) && seats.length) {
+                // atomic booking with idempotency: treat seats already booked by SAME reservationId as OK
+                  const seatsRequested = seats.map(s => String(s || '').trim().toUpperCase());
+                const seatMapByUpper = new Map(dbEntry.seatmapFill.map((s, i) => [String(s.seatId || s.label || '').toUpperCase(), i]));
+        
+                  const unavailable = [];
+                const toBookIdx = [];
+                const alreadyAssigned = [];
+        
+                  for (const sidUpper of seatsRequested) {
+                      const idx = seatMapByUpper.get(sidUpper);
+                      if (typeof idx === 'undefined') {
+                          unavailable.push({ seat: sidUpper, reason: 'not_found' });
+                          continue;
+                        }
+                      const cur = dbEntry.seatmapFill[idx];
+                      // available -> will book
+                        if (!cur.status || cur.status === 'available') {
+                            toBookIdx.push(idx);
+                            continue;
+                          }
+                      // already booked/blocked
+                        const curRid = cur.reservationId || null;
+                      // if incoming reservationId matches existing, consider idempotent success
+                        if (reservationId && curRid && String(curRid) === String(reservationId)) {
+                            alreadyAssigned.push(cur);
+                            continue;
+                          }
+                      // otherwise it's a conflict => unavailable
+                        unavailable.push({ seat: sidUpper, reason: 'not_available', currentStatus: cur.status, reservationId: curRid });
+                    }
+        
+                  if (unavailable.length) {
+                      // abort transaction and inform caller which seats conflict
+                        await session.abortTransaction();
+                      session.endSession();
+                      return res.status(409).json({ success: false, error: 'seats_unavailable', details: unavailable });
+                    }
+        
+                  // perform booking for all requested seats that were available
+                  for (const idx of toBookIdx) {
+                      const seatObj = dbEntry.seatmapFill[idx];
+                      seatObj.status = 'booked';
+                      seatObj.reservationId = reservationId || rid;
+                      // avoid duplicate log if same reservation already present
+                        const existsLog = (dbEntry.logSeatBooked || []).some(l => String(l.seatId) === String(seatObj.seatId) && String(l.reservationId) === String(seatObj.reservationId));
+                      if (!existsLog) {
+                          dbEntry.logSeatBooked.push({
+ seatId: seatObj.seatId,
+                              reservationId: seatObj.reservationId,
+                              orderNumber: orderNumber || null,
+                              customerId: customerId || null,
+                              ts: new Date()
+                          });
+          }
+          dbEntry.seatReserved = (dbEntry.seatReserved || 0) + 1;
+          assigned.push(seatObj);
+        }
+        // include seats already booked by same reservationId (idempotent)
+          for (const s of alreadyAssigned) assigned.push(s);
+      } else {
+        for (const s of dbEntry.seatmapFill) {
+          if (assigned.length >= count) break;
+          if (!s.status || s.status === 'available') {
+            s.status = 'booked';
+            s.reservationId = rid;
+            dbEntry.logSeatBooked.push({
+              seatId: s.seatId,
+              reservationId: rid,
+              orderNumber: orderNumber || null,
+              customerId: customerId || null,
+              ts: new Date()
+            });
+            dbEntry.seatReserved = (dbEntry.seatReserved || 0) + 1;
+            assigned.push(s);
+          }
+        }
+      }
+
+      dbEntry.seatsTotal = dbEntry.seatmapFill.length;
+      dbEntry.seatReserved = dbEntry.seatReserved || dbEntry.seatmapFill.filter(s => s.status === 'booked').length;
+      dbEntry.seatsAvailable = Math.max(0, dbEntry.seatsTotal - dbEntry.seatReserved);
+
+      await doc.save({ session });
+      await session.commitTransaction();
+      session.endSession();
+
+      return res.json({ success: true, reservationId: rid, seats: assigned, seatsAvailable: dbEntry.seatsAvailable });
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      throw err;
+    }
+  } catch (err) {
+    console.error('POST /api/buses/:id/slots/reserve error', err);
+    return res.status(500).json({ error: 'reserve_failed', details: err.message });
+  }
+});
+
+// POST /api/buses/:id/slots/release  body: { dateIso, seats?: string[], reservationId?: string, count?: number, orderNumber }
+app.post('/api/buses/:id/slots/release', async (req, res) => {
+  try {
+    const busIdParam = req.params.id;
+    const { dateIso: rawDate, seats, reservationId, count = 0, orderNumber } = req.body || {};
+    const dateIso = normalizeDateIso(rawDate);
+    if (!dateIso) return res.status(400).json({ error: 'dateIso_required' });
+    if ((!Array.isArray(seats) || seats.length === 0) && !reservationId && (!Number.isInteger(count) || count <= 0)) {
+      return res.status(400).json({ error: 'seats_or_reservationId_or_count_required' });
+    }
+
+    let bus = null;
+    if (mongoose.Types.ObjectId.isValid(busIdParam)) bus = await Bus.findById(busIdParam).lean();
+    if (!bus) bus = await Bus.findOne({ busCode: busIdParam }).lean();
+    if (!bus) return res.status(404).json({ error: 'bus_not_found' });
+
+    const slotDoc = await BusSlot.findOne({ busId: bus._id });
+    if (!slotDoc) return res.status(404).json({ error: 'slots_not_found' });
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const doc = await BusSlot.findOne({ busId: bus._id }).session(session);
+      const dbEntry = (doc.dateBookings || []).find(d => d.dateIso === dateIso);
+      if (!dbEntry) throw new Error('date_slot_not_found');
+
+      const released = [];
+      if (Array.isArray(seats) && seats.length) {
+        for (const sid of seats) {
+          const idx = dbEntry.seatmapFill.findIndex(s => (s.seatId === sid || s.label === sid));
+          if (idx === -1) continue;
+          if (!dbEntry.seatmapFill[idx].status || dbEntry.seatmapFill[idx].status === 'available') continue;
+          dbEntry.logSeatBooked = dbEntry.logSeatBooked.filter(l => !(l.seatId === dbEntry.seatmapFill[idx].seatId && (orderNumber ? String(l.orderNumber) === String(orderNumber) : true)));
+          dbEntry.seatmapFill[idx].status = 'available';
+          dbEntry.seatmapFill[idx].reservationId = null;
+          dbEntry.seatReserved = Math.max(0, (dbEntry.seatReserved || 1) - 1);
+          released.push(dbEntry.seatmapFill[idx]);
+        }
+      } else if (reservationId) {
+        for (const s of dbEntry.seatmapFill) {
+          if (String(s.reservationId) === String(reservationId)) {
+            s.status = 'available';
+            s.reservationId = null;
+            dbEntry.logSeatBooked = dbEntry.logSeatBooked.filter(l => String(l.reservationId) !== String(reservationId));
+            dbEntry.seatReserved = Math.max(0, (dbEntry.seatReserved || 1) - 1);
+            released.push(s);
+          }
+        }
+      } else if (Number.isInteger(count) && count > 0) {
+        for (const s of dbEntry.seatmapFill) {
+          if (released.length >= count) break;
+          if (s.reservationId) {
+            // remove first matching log entry for this seat
+            dbEntry.logSeatBooked = dbEntry.logSeatBooked.filter(l => !(l.seatId === s.seatId && l.reservationId === s.reservationId));
+            s.status = 'available';
+            s.reservationId = null;
+            dbEntry.seatReserved = Math.max(0, (dbEntry.seatReserved || 1) - 1);
+            released.push(s);
+          }
+        }
+      }
+
+      dbEntry.seatsTotal = dbEntry.seatmapFill.length;
+      dbEntry.seatReserved = dbEntry.seatReserved || dbEntry.seatmapFill.filter(s => s.status === 'booked').length;
+      dbEntry.seatsAvailable = Math.max(0, dbEntry.seatsTotal - dbEntry.seatReserved);
+
+      await doc.save({ session });
+      await session.commitTransaction();
+      session.endSession();
+
+      return res.json({ success: true, released, seatsAvailable: dbEntry.seatsAvailable });
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      throw err;
+    }
+  } catch (err) {
+    console.error('POST /api/buses/:id/slots/release error', err);
+    return res.status(500).json({ error: 'release_failed', details: err.message });
+  }
+});
 /* ----------------- Promotions: Schema + CRUD API ----------------- */
 
 const PromotionSchema = new mongoose.Schema({
@@ -1920,6 +1913,8 @@ app.post('/api/admin/news/bulk', async (req, res) => {
   }
 });
 
+
+
 function uploadBufferToCloudinary(buffer, folder = 'uploads') {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream({ folder }, (err, result) => {
@@ -2287,6 +2282,7 @@ app.put('/api/orders/:id', async (req, res) => {
     return res.status(400).json({ error: 'Failed to update order', details: err.message });
   }
 });
+
 function shouldReserve(order) {
   return String(order.paymentStatus) === 'paid' && String(order.orderStatus) === 'confirmed';
 }
@@ -2295,7 +2291,11 @@ function shouldReserve(order) {
 app.patch('/api/orders/:id', async (req, res) => {
   try {
     const id = req.params.id;
-    const existing = await Order.findById(id);
+    // const existing = await Order.findById(id);
+    // safe lookup: try ObjectId -> findById, otherwise lookup by orderNumber
+    let existing = null;
+    if (mongoose.Types.ObjectId.isValid(id)) existing = await Order.findById(id);
+    if (!existing) existing = await Order.findOne({ orderNumber: id });
     if (!existing) return res.status(404).json({ error: 'Order not found' });
 
     const prevShouldReserve = shouldReserve(existing);
@@ -2675,6 +2675,35 @@ app.put('/api/support/:id', async (req, res) => {
                 } catch (e) {
                   console.error('release slot failed for order item', it, e && e.message ? e.message : e);
                   // continue other items
+                }
+              }
+
+              // release bus slots for bus items (best-effort)
+              const SELF_BASE = process.env.SELF_BASE || `http://localhost:${port || 7700}`;
+              for (const it of order.items || []) {
+                try {
+                  if (!it || it.type !== 'bus') continue;
+                  const busId = it.productId || it.itemId;
+                  if (!busId) continue;
+                  // date from snapshot.meta.departureDateIso (preferred) or details.date
+                  const dateRawBus = snapshot.meta?.departureDateIso ?? snapshot.details?.date ?? order.createdAt;
+                  const dateIsoBus = toDateIso(dateRawBus);
+                  if (!dateIsoBus) continue;
+
+                  const seats = Array.isArray(snapshot.details?.seats) && snapshot.details.seats.length ? snapshot.details.seats : undefined;
+                  const paxCount = seats ? undefined : (Array.isArray(snapshot.details?.passengers) ? snapshot.details.passengers.length : (Number(it.quantity || 1) || 1));
+                  const reservationId = order.orderNumber || refundInfo.orderRef || null;
+
+                  const body = { dateIso: dateIsoBus };
+                  if (seats) body.seats = seats;
+                  else body.count = paxCount;
+                  if (reservationId) body.reservationId = reservationId;
+
+                  await axios.post(`${SELF_BASE}/api/buses/${encodeURIComponent(busId)}/slots/release`, body, { timeout: 5000 });
+                  console.log('Released bus slots', { busId, dateIso: dateIsoBus, reservationId, seats, paxCount });
+                } catch (e) {
+                  console.error('release bus slot failed for order item', it, e && e.message ? e.message : e);
+                  // continue - best effort
                 }
               }
 

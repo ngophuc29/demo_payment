@@ -49,13 +49,15 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
         // If order contains tour items, call tour-service to reserve slots
         if (order && Array.isArray(order.items) && order.items.length) {
             const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:8080';
+            const BUS_SERVICE = process.env.BUS_SERVICE_BASE || ORDERS_API_BASE; // bus endpoints live on orders app in local setup
             const snapshot = order.metadata?.bookingDataSnapshot || order.metadata || {};
+
+            // reserve for tour items
             for (const it of order.items) {
                 if (!it || (it.type && String(it.type).toLowerCase() !== 'tour')) continue;
                 const tourId = it.productId || it.itemId;
                 if (!tourId) continue;
 
-                // derive dateIso and paxCount from snapshot (adjust to your snapshot shape)
                 const dateRaw = snapshot.details?.startDateTime ?? snapshot.details?.date ?? snapshot.date;
                 const dateIso = dateRaw ? new Date(dateRaw).toISOString().split('T')[0] : null;
 
@@ -66,7 +68,6 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
                     const c = snapshot.passengers.counts;
                     paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
                 } else {
-                    // fallback to order.items quantity if meaningful
                     paxCount = Number(it.quantity || 1) || 1;
                 }
 
@@ -83,7 +84,63 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
                     // consider retry or compensating logic
                 }
             }
-        }
+
+            // reserve for bus items (idempotent by using reservationId = orderNumber)
+            const reservations = []; // track succeeded reservations to rollback on partial failure
+            for (const it of order.items) {
+                if (!it || (it.type && String(it.type).toLowerCase() !== 'bus')) continue;
+                const busId = it.productId || it.itemId;
+                if (!busId) continue;
+
+                // date: prefer meta.departureDateIso then details.date
+                const dateRaw = snapshot.meta?.departureDateIso ?? snapshot.details?.date ?? snapshot.date;
+                const dateIso = dateRaw ? new Date(dateRaw).toISOString().split('T')[0] : null;
+
+                if (!dateIso) {
+                    console.warn('markOrderPaid: missing dateIso for bus item', { busId, orderRef });
+                    continue;
+                }
+
+                const seats = Array.isArray(snapshot.details?.seats) && snapshot.details.seats.length ? snapshot.details.seats : null;
+                let paxCount = 1;
+                if (Array.isArray(snapshot.details?.passengers)) paxCount = snapshot.details.passengers.length;
+                else if (snapshot.passengers?.counts) {
+                    const c = snapshot.passengers.counts;
+                    paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
+                } else paxCount = Number(it.quantity || 1) || 1;
+
+                const reservationId = order.orderNumber || orderRef;
+                const reqBody = { dateIso };
+                if (seats) reqBody.seats = seats;
+                else reqBody.count = paxCount;
+                reqBody.reservationId = reservationId;
+                reqBody.orderNumber = order.orderNumber || orderRef;
+                reqBody.customerId = order.customerId || order.customerId;
+
+                try {
+                    const resp = await axios.post(`${BUS_SERVICE}/api/buses/${encodeURIComponent(busId)}/slots/reserve`, reqBody, { timeout: 5000 });
+                    console.log(`Bus reserve success for bus ${busId} on ${dateIso}`, resp.data);
+                    reservations.push({ busId, dateIso, seats, paxCount, reservationId });
+                } catch (err) {
+                    console.error(`Failed to reserve seats for bus ${busId} on ${dateIso}:`, err.response?.data || err.message);
+                    // rollback previous bus reservations created in this loop (best-effort)
+                    for (const r of reservations) {
+                        try {
+                            await axios.post(`${BUS_SERVICE}/api/buses/${encodeURIComponent(r.busId)}/slots/release`, {
+                                dateIso: r.dateIso,
+                                reservationId: reservationId,
+                                seats: r.seats || undefined,
+                                count: r.paxCount || 0
+                            }, { timeout: 5000 });
+                            console.log('Rolled back reservation for bus', r.busId);
+                        } catch (releaseErr) {
+                            console.error('Rollback release failed for', r, releaseErr.response?.data || releaseErr.message);
+                        }
+                    }
+                    // do not throw to avoid failing markOrderPaid; notify/alert instead
+                }
+            } // end bus loop
+        } // end if order && items
     } catch (err) {
         console.error(`Failed to update order ${orderRef} on ${ORDERS_API_BASE}:`, err.response?.data || err.message);
     }
@@ -290,7 +347,7 @@ app.post('/zalo/payment', async (req, res) => {
             amount = 50000,
             description = 'Thanh toán MegaTrip',
             app_user = 'user123',
-            callback_url = 'https://334f29e30799.ngrok-free.app/zalo/callback',
+            callback_url = 'https://92b9462039e3.ngrok-free.app/zalo/callback',
             embed_data = {},
             items = [],
             // FE sends orderId (createdOrder.orderNumber or _id)
@@ -332,7 +389,9 @@ app.post('/zalo/payment', async (req, res) => {
             app_time: Date.now(),
             item: JSON.stringify(items || []),
             embed_data: JSON.stringify(embed_data || { redirecturl: callback_url }),
-            amount: Number(amount),
+            // amount: Number(amount),
+            amount: 10000,
+
             callback_url,
             description,
         };
