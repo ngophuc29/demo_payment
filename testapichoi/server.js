@@ -5,6 +5,14 @@ const cors = require('cors')
 const path = require('path') // <-- existing
 const fs = require('fs') // <-- added
 const axios = require('axios'); // <-- add this
+// --- New: JSON body parsing middleware ---
+
+app.use(cors())
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.get('/', (req, res) => {
+  res.send('Hello World!')
+})
 
 app.get('/airports', (req, res) => {
   console.log('GET /airports called');
@@ -474,14 +482,6 @@ BusSchema.pre('save', function (next) {
 
 const Bus = mongoose.model('Bus', BusSchema);
 
-// --- New: JSON body parsing middleware ---
-
-app.use(cors())
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.get('/', (req, res) => {
-  res.send('Hello World!')
-})
 
 
 
