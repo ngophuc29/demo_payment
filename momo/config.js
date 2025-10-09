@@ -5,7 +5,7 @@ module.exports = {
   partnerCode: 'MOMO',
   redirectUrl: 'http://localhost:3000/thanh-toan-thanh-cong',
   // ipnUrl: 'https://0778-14-178-58-205.ngrok-free.app/callback', //chú ý: cần dùng ngrok thì momo mới post đến url này được
-  ipnUrl: 'https://4b3b05071573.ngrok-free.app/momo/callback', //chú ý: cần dùng ngrok thì momo mới post đến url này được
+  ipnUrl: 'https://969acadc785e.ngrok-free.app/momo/callback', //chú ý: cần dùng ngrok thì momo mới post đến url này được
   requestType: 'payWithMethod',
   extraData: '',
   orderGroupId: '',

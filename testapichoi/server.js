@@ -2098,6 +2098,7 @@ const OrderSchema = new mongoose.Schema({
   customerPhone: { type: String, default: '' },
   customerAddress: { type: String, default: '' },
   items: { type: [OrderItemSchema], default: [] },
+  ticketIds: { type: [mongoose.Schema.Types.ObjectId], ref: 'Ticket', default: [] },
   subtotal: { type: Number, default: 0, min: 0 },
   discounts: { type: [DiscountSchema], default: [] },
   fees: { type: [Object], default: [] },
@@ -2749,6 +2750,32 @@ app.put('/api/support/:id', async (req, res) => {
                 }
               }
 
+              // update status ticket
+              // Cancel related tickets for this order (idempotent) by calling local tickets API
+              try {
+                const ticketIds = Array.isArray(order.ticketIds) ? order.ticketIds : [];
+                if (ticketIds.length) {
+                  for (const tid of ticketIds) {
+                    try {
+                      // call ticket status endpoint on this service
+                      await axios.patch(`${SELF_BASE}/api/tickets/${encodeURIComponent(tid)}/status`, {
+                        status: 'cancelled',
+                        reason: 'support_reservation_released',
+                        by: { supportTicket: ticket.ticketNumber }
+                      }, { timeout: 8000 }).catch(() => { });
+                    } catch (e) {
+                      console.warn('cancel ticket failed for', tid, e && e.message ? e.message : e);
+                    }
+                  }
+                  console.log('Cancelled tickets for order', order.orderNumber || order._id, 'count=', ticketIds.length);
+                } else {
+                  console.log('No ticketIds found on order to cancel for', order.orderNumber || order._id);
+                }
+              } catch (e) {
+                console.error('cancelTicketsForOrder HTTP loop failed', e && e.message ? e.message : e);
+              }
+
+
               // update order status/paymentStatus and append timeline/metadata
               try {
                 order.paymentStatus = 'refunded';
@@ -2871,6 +2898,301 @@ app.delete('/api/support/:id', async (req, res) => {
     return res.json({ ok: true, id: removed._id || removed.ticketNumber || id });
   } catch (err) {
     console.error('DELETE /api/support/:id error', err);
+    return res.status(500).json({ ok: false, error: 'delete_failed', details: err.message });
+  }
+});
+
+
+
+
+
+//TICKET
+
+// ...existing code...
+/* ----------------- Ticket: generic model + CRUD API ----------------- */
+const TicketSchema = new mongoose.Schema({
+  ticketNumber: { type: String, required: true, index: true, unique: true },
+  orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', index: true, default: null },
+  orderNumber: { type: String, index: true, default: null },
+
+  // 'bus' | 'tour' | 'flight' | 'other'
+  type: { type: String, required: true, index: true, default: 'other' },
+
+  productId: { type: String, index: true, default: null }, // busId / tourId / flightId
+  providerReservationId: { type: String, default: null, index: true },
+
+  passengerIndex: { type: Number, default: null },
+  passenger: {
+    name: String,
+    type: String,
+    idNumber: String,
+    dob: String
+  },
+
+  seats: { type: [String], default: [] }, // seat ids for bus/flight
+  travelDate: { type: String, default: null }, // YYYY-MM-DD
+  travelStart: { type: Date, default: null },
+  travelEnd: { type: Date, default: null },
+
+  price: { type: Number, default: 0 },
+  currency: { type: String, default: 'VND' },
+
+  reservationInfo: { type: mongoose.Schema.Types.Mixed, default: {} },
+
+  // New: ticketType per passenger
+  ticketType: {
+    type: String,
+    enum: ['adult', 'child', 'infant'],
+    required: [true, 'Loại vé là bắt buộc'],
+    default: 'adult'
+  },
+
+  // Reduce status enum to four states
+  status: { type: String, enum: ['pending', 'cancelled', 'changed', 'paid'], default: 'pending', index: true },
+
+  statusHistory: {
+    type: [new mongoose.Schema({
+      from: String, to: String, by: mongoose.Schema.Types.Mixed, reason: String, meta: mongoose.Schema.Types.Mixed, ts: { type: Date, default: Date.now }
+    }, { _id: false })], default: []
+  },
+
+  uniq: { type: String, index: true, sparse: true }, // idempotency key
+
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}, { collection: 'tickets' });
+
+TicketSchema.pre('save', function (next) { this.updatedAt = new Date(); next(); });
+
+const Ticket = mongoose.model('Ticket', TicketSchema);
+
+// helper: safe string
+function safeStr(v) { return v == null ? '' : String(v); }
+
+// Create ticket (idempotent if uniq provided)
+app.post('/api/tickets', async (req, res) => {
+  try {
+    const p = req.body || {};
+    // Build uniq if not provided
+    const uniq = p.uniq || `${safeStr(p.orderNumber)}::${safeStr(p.type)}::${safeStr(p.productId)}::${safeStr(p.travelDate || p.travelStart)}::${p.passengerIndex != null ? 'paxIndex:' + String(p.passengerIndex) : (Array.isArray(p.seats) && p.seats.length ? 'seats:' + p.seats.join(',') : '')}`;
+    if (uniq) {
+      const exists = await Ticket.findOne({ uniq }).lean();
+      if (exists) return res.status(200).json({ ok: true, ticket: exists, note: 'exists' });
+    }
+
+    const ticketNumber = p.ticketNumber || `TKT_${(p.orderNumber || 'ORD').slice(0, 20)}_${String(Math.floor(Math.random() * 900000) + 100000)}`;
+
+    // Normalize passenger according to schema: if schema expects String, stringify object
+    let passengerVal = p.passenger || {};
+    try {
+      const passengerPath = Ticket.schema && Ticket.schema.path && Ticket.schema.path('passenger');
+      if (passengerPath && passengerPath.instance === 'String' && passengerVal && typeof passengerVal === 'object') {
+        passengerVal = JSON.stringify(passengerVal);
+      }
+    } catch (e) {
+      // ignore - fallback to original object
+    }
+
+    // determine ticketType robustly (from explicit p.ticketType, or passenger.type if available)
+    let ticketTypeVal = p.ticketType || null;
+    if (!ticketTypeVal) {
+      if (passengerVal && typeof passengerVal === 'object') ticketTypeVal = passengerVal.type || passengerVal.ticketType || null;
+      else if (typeof passengerVal === 'string') {
+        try {
+          const parsed = JSON.parse(passengerVal);
+          ticketTypeVal = parsed && (parsed.type || parsed.ticketType) ? (parsed.type || parsed.ticketType) : null;
+        } catch (e) { /* ignore */ }
+      }
+    }
+    if (!ticketTypeVal) ticketTypeVal = 'adult';
+
+    const t = new Ticket({
+      ticketNumber,
+      orderId: p.orderId ? (mongoose.Types.ObjectId.isValid(p.orderId) ? new mongoose.Types.ObjectId(p.orderId) : null) : null,
+      orderNumber: p.orderNumber || null,
+      type: p.type || 'other',
+      productId: p.productId || null,
+      providerReservationId: p.providerReservationId || null,
+      passengerIndex: typeof p.passengerIndex === 'number' ? p.passengerIndex : (p.passengerIndex ? Number(p.passengerIndex) : null),
+      passenger: passengerVal,
+      seats: Array.isArray(p.seats) ? p.seats : (p.seat ? [p.seat] : []),
+      travelDate: p.travelDate || (p.travelStart ? toDateIso(p.travelStart) : null),
+      travelStart: p.travelStart ? new Date(p.travelStart) : null,
+      travelEnd: p.travelEnd ? new Date(p.travelEnd) : null,
+      price: Number(p.price || 0),
+      currency: p.currency || 'VND',
+      reservationInfo: p.reservationInfo || {},
+      status: p.status || 'pending',
+      ticketType: ticketTypeVal,
+      uniq: uniq || null
+    });
+    await t.save();
+    // push ticket _id into order.ticketIds when possible (idempotent)
+    try {
+      if (t.orderId) {
+        const ord = await Order.findById(t.orderId);
+        if (ord) {
+          ord.ticketIds = Array.isArray(ord.ticketIds) ? ord.ticketIds : [];
+          if (!ord.ticketIds.some(id => String(id) === String(t._id))) {
+            ord.ticketIds.push(t._id);
+            await ord.save();
+          }
+        }
+      } else if (t.orderNumber) {
+        const ord = await Order.findOne({ orderNumber: t.orderNumber });
+        if (ord) {
+          ord.ticketIds = Array.isArray(ord.ticketIds) ? ord.ticketIds : [];
+          if (!ord.ticketIds.some(id => String(id) === String(t._id))) {
+            ord.ticketIds.push(t._id);
+            await ord.save();
+          }
+        }
+      }
+    } catch (e) {
+      // non-fatal
+      console.warn('ticket->order link save failed', e && e.message ? e.message : e);
+    }
+
+    return res.status(201).json({ ok: true, ticket: t });
+  } catch (err) {
+    console.error('POST /api/tickets error', err && err.message ? err.message : err);
+    return res.status(500).json({ ok: false, error: 'create_failed', details: err.message });
+  }
+});
+
+// List tickets: support filtering by orderNumber, type, productId, status
+app.get('/api/tickets', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.max(1, parseInt(req.query.pageSize) || 50);
+    const q = req.query.q ? String(req.query.q).trim() : '';
+    const filter = {};
+    if (q) {
+      const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ ticketNumber: re }, { orderNumber: re }, { 'passenger.name': re }, { productId: re }];
+    }
+    if (req.query.type) filter.type = req.query.type;
+    if (req.query.productId) filter.productId = req.query.productId;
+    if (req.query.status) filter.status = req.query.status;
+    const total = await Ticket.countDocuments(filter);
+    const data = await Ticket.find(filter).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean();
+    return res.json({ ok: true, total, page, pageSize, data });
+  } catch (err) {
+    console.error('GET /api/tickets error', err);
+    return res.status(500).json({ ok: false, error: 'list_failed', details: err.message });
+  }
+});
+
+// Get single ticket by id or ticketNumber
+app.get('/api/tickets/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let t = null;
+    if (mongoose.Types.ObjectId.isValid(id)) t = await Ticket.findById(id).lean();
+    if (!t) t = await Ticket.findOne({ ticketNumber: id }).lean();
+    if (!t) return res.status(404).json({ ok: false, error: 'not_found' });
+    return res.json({ ok: true, ticket: t });
+  } catch (err) {
+    console.error('GET /api/tickets/:id error', err);
+    return res.status(500).json({ ok: false, error: 'fetch_failed', details: err.message });
+  }
+});
+
+// Update ticket (replace allowed fields)
+app.put('/api/tickets/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const payload = req.body || {};
+    const update = {};
+    const allowed = ['status', 'passenger', 'seats', 'price', 'currency', 'reservationInfo', 'providerReservationId', 'travelDate', 'travelStart', 'travelEnd', 'productId', 'type', 'orderNumber'];
+    for (const k of allowed) if (typeof payload[k] !== 'undefined') update[k] = payload[k];
+    update.updatedAt = new Date();
+    const t = await Ticket.findOneAndUpdate(mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { ticketNumber: id }, { $set: update }, { new: true }).lean();
+    if (!t) return res.status(404).json({ ok: false, error: 'not_found' });
+    return res.json({ ok: true, ticket: t });
+  } catch (err) {
+    console.error('PUT /api/tickets/:id error', err);
+    return res.status(500).json({ ok: false, error: 'update_failed', details: err.message });
+  }
+});
+app.patch('/api/tickets/:id/status', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { status, reason = '', by = null, meta = {} } = req.body || {};
+    if (!status) return res.status(400).json({ ok: false, error: 'status_required' });
+    const allowed = ['pending', 'cancelled', 'changed', 'paid'];
+    if (!allowed.includes(status)) return res.status(400).json({ ok: false, error: 'invalid_status' });
+
+    const ticket = await (mongoose.Types.ObjectId.isValid(id) ? Ticket.findById(id) : Ticket.findOne({ ticketNumber: id }));
+    if (!ticket) return res.status(404).json({ ok: false, error: 'not_found' });
+
+    if (ticket.status === status) return res.json({ ok: true, ticket: ticket.toObject(), note: 'no_change' });
+
+    const prev = ticket.status;
+    ticket.statusHistory = ticket.statusHistory || [];
+    ticket.statusHistory.push({ from: prev, to: status, by, reason, meta, ts: new Date() });
+    ticket.status = status;
+    if (status === 'cancelled') ticket.reservationInfo = Object.assign({}, ticket.reservationInfo || {}, { cancelledAt: new Date().toISOString() });
+    await ticket.save();
+
+    // best-effort side-effects (release seats/slots) - don't block response
+    (async () => {
+      try {
+        if (status === 'cancelled' && ticket.type === 'bus' && ticket.productId) {
+          const SELF_BASE = process.env.SELF_BASE || `http://localhost:${port}`;
+          const body = { dateIso: ticket.travelDate, reservationId: ticket.providerReservationId || ticket.orderNumber };
+          if (Array.isArray(ticket.seats) && ticket.seats.length) body.seats = ticket.seats;
+          await axios.post(`${SELF_BASE}/api/buses/${encodeURIComponent(ticket.productId)}/slots/release`, body, { timeout: 8000 }).catch(() => { });
+        }
+        if (status === 'cancelled' && ticket.type === 'tour' && ticket.productId) {
+          await releaseViaHttp(ticket.productId, ticket.travelDate || ticket.travelStart, ticket.providerReservationId || ticket.orderNumber).catch(() => { });
+        }
+        // update order timeline
+        if (ticket.orderId) {
+          try {
+            const ord = await Order.findById(ticket.orderId);
+            if (ord) {
+              ord.timeline = ord.timeline || [];
+              ord.timeline.push({ ts: new Date(), text: `Ticket ${ticket.ticketNumber} status -> ${status}`, meta: { ticket: ticket._id } });
+              await ord.save();
+            }
+          } catch (e) { /* ignore */ }
+        }
+      } catch (e) {
+        console.error('ticket status side-effect error', e && e.message ? e.message : e);
+      }
+    })();
+
+    return res.json({ ok: true, ticket });
+  } catch (err) {
+    console.error('PATCH /api/tickets/:id/status error', err);
+    return res.status(500).json({ ok: false, error: 'status_update_failed', details: err.message });
+  }
+});
+
+// Delete ticket
+app.delete('/api/tickets/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    // delete by _id or ticketNumber
+    let removed = null;
+    if (mongoose.Types.ObjectId.isValid(id)) removed = await Ticket.findByIdAndDelete(id).lean();
+    if (!removed) removed = await Ticket.findOneAndDelete({ ticketNumber: id }).lean();
+    if (!removed) return res.status(404).json({ ok: false, error: 'not_found' });
+
+    // best-effort: remove ref from order.ticketIds
+    try {
+      if (removed.orderId) {
+        await Order.findByIdAndUpdate(removed.orderId, { $pull: { ticketIds: removed._id } }).catch(() => { });
+      } else if (removed.orderNumber) {
+        const ord = await Order.findOne({ orderNumber: removed.orderNumber });
+        if (ord) await Order.findByIdAndUpdate(ord._id, { $pull: { ticketIds: removed._id } }).catch(() => { });
+      }
+    } catch (e) { /* ignore */ }
+
+    return res.json({ ok: true, id: removed._id || removed.ticketNumber });
+  } catch (err) {
+    console.error('DELETE /api/tickets/:id error', err);
     return res.status(500).json({ ok: false, error: 'delete_failed', details: err.message });
   }
 });

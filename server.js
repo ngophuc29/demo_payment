@@ -16,6 +16,140 @@ app.use(cors());
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 const ORDERS_API_BASE = process.env.ORDERS_API_BASE || 'http://localhost:7700';
+// ...existing code...
+async function issueTicketsForOrder(order) {
+    if (!order) return [];
+    const ORD = process.env.ORDERS_API_BASE || 'http://localhost:7700';
+    const snapshot = order.metadata?.bookingDataSnapshot || order.metadata || {};
+    const created = [];
+
+    // helper to get string _id
+    const orderIdStr = (() => {
+        if (!order._id) return null;
+        if (typeof order._id === 'string') return order._id;
+        if (order._id.$oid) return order._id.$oid;
+        return String(order._id);
+    })();
+
+    const postTicket = async (payload) => {
+        try {
+            const resp = await axios.post(`${ORD}/api/tickets`, payload, { timeout: 8000 });
+            if (resp && resp.data && resp.data.ticket) return resp.data.ticket;
+            if (resp && resp.data && resp.data.ok && resp.data.ticket) return resp.data.ticket;
+            return resp.data || resp;
+        } catch (e) {
+            console.error('issueTicketsForOrder: create ticket failed', e.response?.data || e.message || e);
+            throw e;
+        }
+    };
+
+    for (const it of order.items || []) {
+        const type = String(it.type || '').toLowerCase();
+        const productId = it.productId || it.itemId || null;
+        if (!productId) continue;
+
+        if (type === 'bus') {
+            const details = snapshot.details || {};
+            const seats = Array.isArray(details.seats) ? details.seats : [];
+            const paxArr = Array.isArray(details.passengers) ? details.passengers : (details.passengerInfo ? [details.passengerInfo] : []);
+            const travelIso = snapshot.meta?.departureDateIso || details.date || snapshot.date || null;
+            const travelDate = travelIso ? new Date(travelIso).toISOString().split('T')[0] : null;
+            const pricing = snapshot.pricing || {};
+            const perPax = pricing.perPax || {};
+            for (let i = 0; i < (paxArr.length || Number(it.quantity || 1)); i++) {
+                const p = paxArr[i] || {};
+                const seat = seats[i] || null;
+                const paxType = p.type || (i === 0 ? 'adult' : 'adult');
+                let price = 0;
+                if (paxType === 'child') price = Number(perPax.childUnit || 0);
+                else if (paxType === 'infant') price = Number(perPax.infantUnit || 0);
+                else price = Number(perPax.adultUnit || 0);
+                if (!price) price = Math.round(Number(order.total || it.unitPrice || 0) / Math.max(1, paxArr.length || Number(it.quantity || 1)));
+
+                const passengerName = p.name || [p.title, p.firstName, p.lastName].filter(Boolean).join(' ').trim() || p.firstName || p.lastName || `Pax ${i + 1}`;
+                const uniq = `${order.orderNumber || orderIdStr}::bus::${productId}::${travelDate || ''}::${seat ? 'seat:' + seat : 'paxIndex:' + i}`;
+
+                const payload = {
+                    orderId: orderIdStr,
+                    orderNumber: order.orderNumber || null,
+                    type: 'bus',
+                    productId,
+                    passengerIndex: i,
+                    passenger: { name: passengerName, type: paxType, idNumber: p.idNumber || '', dob: p.dateOfBirth || '' },
+                    seats: seat ? [seat] : [],
+                    travelDate: travelDate,
+                    travelStart: travelIso || null,
+                    price,
+                    currency: snapshot.meta?.currency || 'VND',
+                    reservationInfo: snapshot,
+                    uniq
+                };
+
+                try {
+                    const ticket = await postTicket(payload);
+                    created.push(ticket);
+                } catch (e) {
+                    // log and continue to next passenger
+                    console.error('issueTicketsForOrder: failed to create bus ticket for passenger', i, e.message || e);
+                }
+            }
+        } else if (type === 'tour') {
+            const details = snapshot.details || {};
+            const paxArr = Array.isArray(details.passengers) ? details.passengers : [];
+            const travelIso = details.startDateTime || details.date || snapshot.meta?.startDateTime || null;
+            const travelDate = travelIso ? new Date(travelIso).toISOString().split('T')[0] : (details.date || null);
+            const pricing = snapshot.pricing || {};
+            const perPax = pricing.perPax || {};
+            const tourCode = details.tourCode || productId;
+
+            for (let i = 0; i < (paxArr.length || Number(it.quantity || 1)); i++) {
+                const p = paxArr[i] || {};
+                const paxType = p.type || 'adult';
+                let price = 0;
+                if (paxType === 'child') price = Number(perPax.childUnit || 0);
+                else if (paxType === 'infant') price = Number(perPax.infantUnit || 0);
+                else price = Number(perPax.adultUnit || 0);
+                if (!price) price = Math.round(Number(order.total || it.unitPrice || 0) / Math.max(1, paxArr.length || Number(it.quantity || 1)));
+
+                const passengerName = p.name || [p.title, p.firstName, p.lastName].filter(Boolean).join(' ').trim() || p.firstName || p.lastName || `Pax ${i + 1}`;
+                const uniq = `${order.orderNumber || orderIdStr}::tour::${tourCode}::${travelDate || ''}::paxIndex:${i}`;
+
+                const payload = {
+                    orderId: orderIdStr,
+                    orderNumber: order.orderNumber || null,
+                    type: 'tour',
+                    productId: tourCode,
+                    passengerIndex: i,
+                    passenger: { name: passengerName, type: paxType, idNumber: p.idNumber || '', dob: p.dateOfBirth || '' },
+                    seats: [],
+                    travelDate: travelDate,
+                    travelStart: travelIso || null,
+                    travelEnd: details.endDateTime || null,
+                    price,
+                    currency: snapshot.meta?.currency || 'VND',
+                    reservationInfo: snapshot,
+                    uniq
+                };
+
+                try {
+                    const ticket = await postTicket(payload);
+                    created.push(ticket);
+                } catch (e) {
+                    console.error('issueTicketsForOrder: failed to create tour ticket for passenger', i, e.message || e);
+                }
+            }
+        } else {
+            // other product types: skip
+            continue;
+        }
+    } // end items loop
+
+    console.log('issueTicketsForOrder: created tickets count', created.length);
+    return created;
+}
+
+// ...existing code...
+// find location near end of markOrderPaid where reservations done, then call:
 async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
     if (!orderRef) {
         console.warn('markOrderPaid: missing orderRef, skip update');
@@ -164,6 +298,20 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
                     // do not throw to avoid failing markOrderPaid; notify/alert instead
                 }
             } // end bus loop
+
+            try {
+                if (order) {
+                    try {
+                        const createdTickets = await issueTicketsForOrder(order);
+                        console.log('Tickets issued for order', orderRef, 'count=', createdTickets.length);
+                    } catch (e) {
+                        console.error('markOrderPaid: failed to issue tickets for', orderRef, e?.message || e);
+                        // don't throw — we already updated order/payment; just log error for manual retry
+                    }
+                }
+            } catch (errInner) {
+                // noop: this outer try/catch continues existing behavior
+            }
         } // end if order && items
     } catch (err) {
         console.error(`Failed to update order ${orderRef} on ${ORDERS_API_BASE}:`, err.response?.data || err.message);
@@ -246,6 +394,7 @@ app.post('/momo/payment', async (req, res) => {
 
         const result = await axios(options);
         console.log('[MoMo] /payment response:', result.data);
+       
         return res.status(200).json(result.data);
     } catch (error) {
         console.log('[MoMo] /payment error:', error.response ? error.response.data : error.message);
@@ -371,7 +520,7 @@ app.post('/zalo/payment', async (req, res) => {
             amount = 50000,
             description = 'Thanh toán MegaTrip',
             app_user = 'user123',
-            callback_url = 'https://4b3b05071573.ngrok-free.app/zalo/callback',
+            callback_url = 'https://969acadc785e.ngrok-free.app/zalo/callback',
             embed_data = {},
             items = [],
             // FE sends orderId (createdOrder.orderNumber or _id)
