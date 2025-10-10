@@ -2008,7 +2008,39 @@ const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:8080';
 function toDateIso(v) {
   try { return (new Date(v)).toISOString().split('T')[0]; } catch { return null; }
 }
-
+// New helper: compute seat-consuming pax (adults + children) from snapshot/details.
+// Returns { seatCount, adults, children, infants, paxArr }
+function seatConsumingCounts(snapshot, it) {
+  const paxArr = Array.isArray(snapshot?.details?.passengers) ? snapshot.details.passengers : [];
+  let adults = 0, children = 0, infants = 0;
+  if (paxArr.length) {
+    for (const p of paxArr) {
+      const t = (p && p.type) ? String(p.type).toLowerCase() : 'adult';
+      if (t === 'infant') infants++;
+      else if (t === 'child') children++;
+      else adults++;
+    }
+  } else if (snapshot?.passengers?.counts) {
+    const c = snapshot.passengers.counts;
+    adults = Number(c.adults || 0);
+    children = Number(c.children || 0);
+    infants = Number(c.infants || 0);
+  } else if (Array.isArray(it?.passengers) && it.passengers.length) {
+    // fallback if item itself contains passengers
+    for (const p of it.passengers) {
+      const t = (p && p.type) ? String(p.type).toLowerCase() : 'adult';
+      if (t === 'infant') infants++;
+      else if (t === 'child') children++;
+      else adults++;
+    }
+  } else {
+    // last fallback: use item.quantity as adults
+    const q = Number(it?.quantity || 1);
+    adults = Math.max(1, q);
+  }
+  const seatCount = Math.max(1, adults + children); // infants do NOT consume seats
+  return { seatCount, adults, children, infants, paxArr };
+}
 async function reserveViaHttp(tourId, dateIso, paxCount, reservationId = null, orderNumber = null) {
   const body = { tourId, dateIso, paxCount: Number(paxCount || 0) };
   if (reservationId) body.reservationId = reservationId;
@@ -2057,13 +2089,15 @@ async function tryReserveSlotsForOrder(order) {
     const dateIso = toDateIso(dateRaw);
     if (!dateIso) continue;
     // determine paxCount
-    let paxCount = 1;
-    if (Array.isArray(snapshot.details?.passengers)) paxCount = snapshot.details.passengers.length;
-    else if (snapshot.passengers?.counts) {
-      const c = snapshot.passengers.counts;
-      paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
-    } else if (it.quantity) paxCount = Number(it.quantity) || 1;
-
+    // let paxCount = 1;
+    // if (Array.isArray(snapshot.details?.passengers)) paxCount = snapshot.details.passengers.length;
+    // else if (snapshot.passengers?.counts) {
+    //   const c = snapshot.passengers.counts;
+    //   paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
+    // } else if (it.quantity) paxCount = Number(it.quantity) || 1;
+    // count only adults+children for seat reservation; infants sit with adults and don't consume seat
+    const { seatCount } = seatConsumingCounts(snapshot, it);
+    const paxCount = seatCount;
     // call reserve endpoint
     await reserveViaHttp(tourId, dateIso, paxCount);
     reservations.push({ tourId, dateIso, paxCount, itemIndexHint: it.itemId || it.productId });
@@ -2099,6 +2133,15 @@ const OrderSchema = new mongoose.Schema({
   customerAddress: { type: String, default: '' },
   items: { type: [OrderItemSchema], default: [] },
   ticketIds: { type: [mongoose.Schema.Types.ObjectId], ref: 'Ticket', default: [] },
+
+  // Change-calendar (ticket re-schedule) support
+  // indicates whether this order has requested/applied a date-change
+  changeCalendar: { type: Boolean, default: false },
+  // new travel date after change (store as YYYY-MM-DD string for consistency with tickets)
+  dateChangeCalendar: { type: String, default: null },
+  // when changing, keep previous tickets' ids here (initially null)
+  oldTicketIDs: { type: [mongoose.Schema.Types.ObjectId], ref: 'Ticket', default: null },
+
   subtotal: { type: Number, default: 0, min: 0 },
   discounts: { type: [DiscountSchema], default: [] },
   fees: { type: [Object], default: [] },
@@ -2111,6 +2154,17 @@ const OrderSchema = new mongoose.Schema({
   transId: { type: String, default: null },     // MoMo
   zp_trans_id: { type: String, default: null }, // ZaloPay
   paymentReference: { type: String, default: null },
+  // Price / payment info related to calendar change (penalty / new price / diff / payment result)
+  priceChangeTour: {
+    penalty: { type: Number, default: 0 },      // phí phạt theo chính sách
+    newPrice: { type: Number, default: 0 },     // giá của ngày mới
+    diff: { type: Number, default: 0 },         // giá chênh lệch (newPrice - oldPrice +/- penalty)
+    paymentType: { type: String, default: 'unknown' }, // 'momo'|'zalopay'|'card'|'cash'|...
+    transId: { type: String, default: null },     // MoMo tx for this change
+    zp_trans_id: { type: String, default: null }, // ZaloPay tx for this change
+    status: { type: String, enum: ['paid', 'failed', 'refunded'], default: 'paid' },    // payment completed for change? (false initially)
+    currency: { type: String, default: 'VND' }
+  },
   timeline: { type: [TimelineSchema], default: [] },
   notes: { type: [String], default: [] },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
@@ -2927,6 +2981,7 @@ const TicketSchema = new mongoose.Schema({
     type: String,
     idNumber: String,
     dob: String
+
   },
 
   seats: { type: [String], default: [] }, // seat ids for bus/flight
@@ -2948,7 +3003,7 @@ const TicketSchema = new mongoose.Schema({
   },
 
   // Reduce status enum to four states
-  status: { type: String, enum: ['pending', 'cancelled', 'changed', 'paid'], default: 'pending', index: true },
+  status: { type: String, enum: ['paid', 'cancelled', 'changed', ], default: 'paid', index: true },
 
   statusHistory: {
     type: [new mongoose.Schema({

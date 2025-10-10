@@ -17,6 +17,43 @@ app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 const ORDERS_API_BASE = process.env.ORDERS_API_BASE || 'http://localhost:7700';
 // ...existing code...
+function toDateIso(v) {
+    try { return (new Date(v)).toISOString().split('T')[0]; } catch { return null; }
+}
+
+// New helper: compute seat-consuming pax (adults + children) from snapshot/details.
+// Returns { seatCount, adults, children, infants, paxArr }
+function seatConsumingCounts(snapshot, it) {
+    const paxArr = Array.isArray(snapshot?.details?.passengers) ? snapshot.details.passengers : [];
+    let adults = 0, children = 0, infants = 0;
+    if (paxArr.length) {
+        for (const p of paxArr) {
+            const t = (p && p.type) ? String(p.type).toLowerCase() : 'adult';
+            if (t === 'infant') infants++;
+            else if (t === 'child') children++;
+            else adults++;
+        }
+    } else if (snapshot?.passengers?.counts) {
+        const c = snapshot.passengers.counts;
+        adults = Number(c.adults || 0);
+        children = Number(c.children || 0);
+        infants = Number(c.infants || 0);
+    } else if (Array.isArray(it?.passengers) && it.passengers.length) {
+        // fallback if item itself contains passengers
+        for (const p of it.passengers) {
+            const t = (p && p.type) ? String(p.type).toLowerCase() : 'adult';
+            if (t === 'infant') infants++;
+            else if (t === 'child') children++;
+            else adults++;
+        }
+    } else {
+        // last fallback: use item.quantity as adults
+        const q = Number(it?.quantity || 1);
+        adults = Math.max(1, q);
+    }
+    const seatCount = Math.max(1, adults + children); // infants do NOT consume seats
+    return { seatCount, adults, children, infants, paxArr };
+}
 async function issueTicketsForOrder(order) {
     if (!order) return [];
     const ORD = process.env.ORDERS_API_BASE || 'http://localhost:7700';
@@ -196,16 +233,18 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
                 const dateRaw = snapshot.details?.startDateTime ?? snapshot.details?.date ?? snapshot.date;
                 const dateIso = dateRaw ? new Date(dateRaw).toISOString().split('T')[0] : null;
 
-                let paxCount = 1;
-                if (Array.isArray(snapshot.details?.passengers)) {
-                    paxCount = snapshot.details.passengers.length || 1;
-                } else if (snapshot.passengers?.counts) {
-                    const c = snapshot.passengers.counts;
-                    paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
-                } else {
-                    paxCount = Number(it.quantity || 1) || 1;
-                }
-
+                // let paxCount = 1;
+                // if (Array.isArray(snapshot.details?.passengers)) {
+                //     paxCount = snapshot.details.passengers.length || 1;
+                // } else if (snapshot.passengers?.counts) {
+                //     const c = snapshot.passengers.counts;
+                //     paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
+                // } else {
+                //     paxCount = Number(it.quantity || 1) || 1;
+                // }
+                // compute seat-consuming pax (adults + children). infants do NOT consume seats.
+                const { seatCount } = seatConsumingCounts(snapshot, it);
+                const paxCount = seatCount;
                 if (!dateIso) {
                     console.warn('markOrderPaid: missing dateIso for tour item', { tourId, orderRef });
                     continue;
@@ -256,17 +295,22 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
                 }
 
                 const seats = Array.isArray(snapshot.details?.seats) && snapshot.details.seats.length ? snapshot.details.seats : null;
-                let paxCount = 1;
-                if (Array.isArray(snapshot.details?.passengers)) paxCount = snapshot.details.passengers.length;
-                else if (snapshot.passengers?.counts) {
-                    const c = snapshot.passengers.counts;
-                    paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
-                } else paxCount = Number(it.quantity || 1) || 1;
+                // let paxCount = 1;
+                // if (Array.isArray(snapshot.details?.passengers)) paxCount = snapshot.details.passengers.length;
+                // else if (snapshot.passengers?.counts) {
+                //     const c = snapshot.passengers.counts;
+                //     paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
+                // } else paxCount = Number(it.quantity || 1) || 1;
+                // compute seat-consuming pax (adults + children). infants do NOT consume seats.
+                const { seatCount } = seatConsumingCounts(snapshot, it);
+                const paxCount = seatCount;
 
                 const reservationId = order.orderNumber || orderRef;
                 const reqBody = { dateIso };
+                // if (seats) reqBody.seats = seats;
+                // else reqBody.count = paxCount;
                 if (seats) reqBody.seats = seats;
-                else reqBody.count = paxCount;
+                else reqBody.count = paxCount; // paxCount = adults + children (infants excluded)
                 reqBody.reservationId = reservationId;
                 reqBody.orderNumber = order.orderNumber || orderRef;
                 reqBody.customerId = order.customerId || order.customerId;
@@ -394,7 +438,7 @@ app.post('/momo/payment', async (req, res) => {
 
         const result = await axios(options);
         console.log('[MoMo] /payment response:', result.data);
-       
+
         return res.status(200).json(result.data);
     } catch (error) {
         console.log('[MoMo] /payment error:', error.response ? error.response.data : error.message);
