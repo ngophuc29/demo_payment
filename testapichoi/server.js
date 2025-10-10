@@ -1340,6 +1340,64 @@ app.post('/api/buses/:id/slots/release', async (req, res) => {
     return res.status(500).json({ error: 'release_failed', details: err.message });
   }
 });
+
+app.get('/api/buses/:id/slots/:date', async (req, res) => {
+  try {
+    const busIdParam = req.params.id;
+    const dateParam = req.params.date;
+    const dateIso = normalizeDateIso(dateParam);
+    if (!dateIso) return res.status(400).json({ error: 'invalid_date' });
+
+    // resolve bus by _id or busCode
+    let bus = null;
+    if (mongoose.Types.ObjectId.isValid(busIdParam)) bus = await Bus.findById(busIdParam).lean();
+    if (!bus) bus = await Bus.findOne({ busCode: busIdParam }).lean();
+    if (!bus) return res.status(404).json({ error: 'bus_not_found' });
+
+    // ensure slot doc exists: create initial if missing (same logic as reserve handler)
+    let slotDoc = await BusSlot.findOne({ busId: bus._id });
+    if (!slotDoc) {
+      const inits = (Array.isArray(bus.departureDates) ? bus.departureDates : [bus.departureAt]).map(d => {
+        const iso = normalizeDateIso(d);
+        if (!iso) return null;
+        const seatmap = buildSeatmapFillFromBus(bus);
+        const seatsTotal = (bus.seatMap || []).length || Number(bus.seatsTotal || 0);
+        const log = (seatmap || []).filter(s => s.status === 'booked').map(s => ({
+          seatId: s.seatId,
+          reservationId: s.reservationId || null,
+          orderNumber: null,
+          customerId: null,
+          ts: new Date()
+        }));
+        const seatReserved = log.length;
+        return {
+          dateIso: iso,
+          seatmapFill: seatmap,
+          seatsTotal,
+          seatReserved,
+          seatsAvailable: Math.max(0, seatsTotal - seatReserved),
+          logSeatBooked: log
+        };
+      }).filter(Boolean);
+      slotDoc = new BusSlot({ busId: bus._id, dateBookings: inits });
+      await slotDoc.save();
+      // reload as lean for response
+      slotDoc = await BusSlot.findOne({ busId: bus._id }).lean();
+    } else {
+      // ensure fresh lean doc for read-only response
+      slotDoc = await BusSlot.findOne({ busId: bus._id }).lean();
+    }
+
+    const dbEntry = (slotDoc.dateBookings || []).find(d => d.dateIso === dateIso);
+    if (!dbEntry) return res.status(404).json({ error: 'date_slot_not_found' });
+
+    // respond shape compatible with client: { slot: dbEntry }
+    return res.json({ slot: dbEntry });
+  } catch (err) {
+    console.error('GET /api/buses/:id/slots/:date error:', err && err.message ? err.message : err);
+    return res.status(500).json({ error: 'failed', details: err.message });
+  }
+});
 /* ----------------- Promotions: Schema + CRUD API ----------------- */
 
 const PromotionSchema = new mongoose.Schema({
@@ -3003,7 +3061,7 @@ const TicketSchema = new mongoose.Schema({
   },
 
   // Reduce status enum to four states
-  status: { type: String, enum: ['paid', 'cancelled', 'changed', ], default: 'paid', index: true },
+  status: { type: String, enum: ['paid', 'cancelled', 'changed'], default: 'paid', index: true },
 
   statusHistory: {
     type: [new mongoose.Schema({
@@ -3077,7 +3135,7 @@ app.post('/api/tickets', async (req, res) => {
       price: Number(p.price || 0),
       currency: p.currency || 'VND',
       reservationInfo: p.reservationInfo || {},
-      status: p.status || 'pending',
+      status: p.status || 'paid',
       ticketType: ticketTypeVal,
       uniq: uniq || null
     });
