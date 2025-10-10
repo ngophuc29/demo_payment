@@ -2213,15 +2213,24 @@ const OrderSchema = new mongoose.Schema({
   zp_trans_id: { type: String, default: null }, // ZaloPay
   paymentReference: { type: String, default: null },
   // Price / payment info related to calendar change (penalty / new price / diff / payment result)
-  priceChangeTour: {
+  inforChangeCalendar: {
     penalty: { type: Number, default: 0 },      // phí phạt theo chính sách
     newPrice: { type: Number, default: 0 },     // giá của ngày mới
     diff: { type: Number, default: 0 },         // giá chênh lệch (newPrice - oldPrice +/- penalty)
     paymentType: { type: String, default: 'unknown' }, // 'momo'|'zalopay'|'card'|'cash'|...
     transId: { type: String, default: null },     // MoMo tx for this change
     zp_trans_id: { type: String, default: null }, // ZaloPay tx for this change
-    status: { type: String, enum: ['paid', 'failed', 'refunded'], default: 'paid' },    // payment completed for change? (false initially)
-    currency: { type: String, default: 'VND' }
+    // default to 'pending' until payment for change is completed
+    status: { type: String, enum: ['pending', 'paid', 'failed', 'refunded'], default: 'pending' },
+    currency: { type: String, default: 'VND' },
+    // unique code for change requests (ORD_FORCHANGE_...) — generated at order creation when missing
+    codeChange: { type: String, default: null, index: true },
+    // additional data payload (store change date and optional meta)
+    data: {
+      changeDate: { type: String, default: null }, // YYYY-MM-DD of the new date
+      note: { type: String, default: '' },
+      meta: { type: mongoose.Schema.Types.Mixed, default: {} }
+    }
   },
   timeline: { type: [TimelineSchema], default: [] },
   notes: { type: [String], default: [] },
@@ -2260,7 +2269,24 @@ OrderSchema.pre('validate', async function (next) {
     return next(err);
   }
 });
-
+// Ensure a change-code (codeChange) for calendar change is generated at order creation time.
+// Will not overwrite if already present.
+OrderSchema.pre('validate', function (next) {
+  try {
+    this.inforChangeCalendar = this.inforChangeCalendar || {};
+    if (!this.inforChangeCalendar.codeChange) {
+      const date = new Date();
+      const datePart = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+      // generate 6-digit numeric suffix (similar style to orderNumber)
+      const rand = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+      // use ORD_FORCHANGE_ prefix as requested
+      this.inforChangeCalendar.codeChange = `ORD_FORCHANGE_${datePart}_${rand}`;
+    }
+  } catch (e) {
+    // ignore generation errors (will not block order save)
+  }
+  return next();
+});
 const Order = mongoose.model('Order', OrderSchema);
 
 // List orders with filters, pagination, sort
