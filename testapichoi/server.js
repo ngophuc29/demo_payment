@@ -2222,6 +2222,7 @@ const OrderSchema = new mongoose.Schema({
   customerPhone: { type: String, default: '' },
   customerAddress: { type: String, default: '' },
   items: { type: [OrderItemSchema], default: [] },
+  hasRefundRequest: { type: Boolean, default: false }, // field này để kiểm tra đơn đã gửi ycau hoàn
   ticketIds: { type: [mongoose.Schema.Types.ObjectId], ref: 'Ticket', default: [] },
 
   // Change-calendar (ticket re-schedule) support
@@ -2479,7 +2480,7 @@ app.put('/api/orders/:id', async (req, res) => {
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     // apply updates: allow payment fields to be updated
-    const allowed = ['customerName', 'customerEmail', 'customerPhone', 'customerAddress', 'items', 'subtotal', 'discounts', 'fees', 'tax', 'total', 'paymentMethod', 'paymentStatus', 'orderStatus', 'transId', 'zp_trans_id', 'paymentReference', 'metadata', 'notes', 'inforChangeCalendar', 'changeCalendar', 'dateChangeCalendar', 'ticketIds', 'oldTicketIDs']; // Thêm các field này
+    const allowed = ['customerName', 'customerEmail', 'customerPhone', 'customerAddress', 'items', 'subtotal', 'discounts', 'fees', 'tax', 'total', 'paymentMethod', 'paymentStatus', 'orderStatus', 'transId', 'zp_trans_id', 'paymentReference', 'metadata', 'notes', 'inforChangeCalendar', 'changeCalendar', 'dateChangeCalendar', 'ticketIds', 'oldTicketIDs', 'hasRefundRequest']; // Thêm các field này
     for (const k of allowed) {
       if (typeof payload[k] !== 'undefined') order[k] = payload[k];
     }
@@ -2934,6 +2935,24 @@ app.post('/api/support', async (req, res) => {
 
     const ticket = new SupportTicket(payload);
     await ticket.save();
+
+    // Nếu type 'cancel', update order.hasRefundRequest = true
+    if (payload.type === 'cancel' && payload.refundInfo?.orderRef) {
+      try {
+        let order = null;
+        if (mongoose.Types.ObjectId.isValid(payload.refundInfo.orderRef)) {
+          order = await Order.findById(payload.refundInfo.orderRef);
+        }
+        if (!order) order = await Order.findOne({ orderNumber: payload.refundInfo.orderRef });
+        if (order) {
+          order.hasRefundRequest = true;
+          await order.save();
+        }
+      } catch (e) {
+        console.warn('Failed to update order.hasRefundRequest', e.message);
+      }
+    }
+
     return res.status(201).json({ ok: true, ticket });
   } catch (err) {
     console.error('POST /api/support error', err);
