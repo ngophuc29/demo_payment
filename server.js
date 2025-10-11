@@ -17,6 +17,7 @@ app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 const ORDERS_API_BASE = process.env.ORDERS_API_BASE || 'http://localhost:7700';
 const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:8080';
+const BUS_SERVICE = process.env.BUS_SERVICE_BASE || ORDERS_API_BASE || 'http://localhost:7700'; // bus endpoints live on orders app in local setup
 
 // ...existing code...
 function toDateIso(v) {
@@ -244,36 +245,102 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
         // Update order gốc qua API (thay vì save() trên plain object)
         await axios.put(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(originalOrder._id || originalOrder.orderNumber)}`, updatePayload, { timeout: 5000 });
 
-        // 2. Release slots cho ngày cũ và reserve cho ngày mới (chỉ cho Tour)
+        // 2. Release slots cho ngày cũ và reserve cho ngày mới (cho Tour và Bus)
         const snapshot = originalOrder.metadata?.bookingDataSnapshot || {};
         for (const it of originalOrder.items || []) {
-            if (it.type !== 'tour') continue; // Chỉ xử lý Tour
-            const tourId = it.productId || it.itemId;
-            if (!tourId) continue;
-
-            // Tính paxCount (adults + children)
-            const { seatCount } = seatConsumingCounts(snapshot, it);
-            const paxCount = seatCount;
+            const productId = it.productId || it.itemId;
+            if (!productId) continue;
 
             // Ngày cũ: từ snapshot
             const oldDateRaw = snapshot.details?.startDateTime ?? snapshot.details?.date;
             const oldDateIso = toDateIso(oldDateRaw);
-            if (oldDateIso) {
-                try {
-                    await releaseViaHttp(tourId, oldDateIso, null, originalOrder.orderNumber);
-                    console.log(`Released ${paxCount} pax for tour ${tourId} on old date ${oldDateIso} (change calendar)`);
-                } catch (e) {
-                    console.error('Release tour failed for old date:', e.message);
-                }
-            }
 
             // Ngày mới: từ changeDate
-            if (changeDate) {
+            const newDateIso = changeDate;
+
+            if (it.type === 'tour') {
+                // Xử lý Tour (như cũ)
+                const { seatCount } = seatConsumingCounts(snapshot, it);
+                const paxCount = seatCount;
+                if (oldDateIso) {
+                    try {
+                        await releaseViaHttp(productId, oldDateIso, null, originalOrder.orderNumber);
+                        console.log(`Released ${paxCount} pax for tour ${productId} on old date ${oldDateIso} (change calendar)`);
+                    } catch (e) {
+                        console.error('Release tour failed for old date:', e.message);
+                    }
+                }
+                if (newDateIso) {
+                    try {
+                        await reserveViaHttp(productId, newDateIso, paxCount, null, originalOrder.orderNumber);
+                        console.log(`Reserved ${paxCount} pax for tour ${productId} on new date ${newDateIso} (change calendar)`);
+                    } catch (e) {
+                        console.error('Reserve tour failed for new date:', e.message);
+                    }
+                }
+            } else if (it.type === 'bus') {
+                // Xử lý Bus (với seats)
+                // Seats cũ: từ ticketIds hiện tại
+                let oldSeats = [];
                 try {
-                    await reserveViaHttp(tourId, changeDate, paxCount, null, originalOrder.orderNumber);
-                    console.log(`Reserved ${paxCount} pax for tour ${tourId} on new date ${changeDate} (change calendar)`);
+                    const ticketIds = originalOrder.ticketIds || [];
+                    for (const tid of ticketIds) {
+                        const ticketResp = await axios.get(`${TICKET_SERVICE_BASE}/api/tickets/${encodeURIComponent(tid)}`, { timeout: 5000 });
+                        const ticket = ticketResp.data?.ticket || ticketResp.data;
+                        if (ticket && Array.isArray(ticket.seats)) {
+                            oldSeats.push(...ticket.seats);
+                        }
+                    }
                 } catch (e) {
-                    console.error('Reserve tour failed for new date:', e.message);
+                    console.error('Error fetching old seats for bus:', e.message);
+                }
+
+                // Seats mới: từ meta (lưu từ bước 2)
+                let newSeats = [];
+                try {
+                    const meta = originalOrder.inforChangeCalendar?.data?.meta;
+                    if (meta && Array.isArray(meta.selectedSeats)) {
+                        newSeats = meta.selectedSeats;
+                    }
+                } catch (e) {
+                    console.error('Error parsing new seats for bus:', e.message);
+                }
+
+                // Release ngày cũ
+                if (oldDateIso && oldSeats.length > 0) {
+                    try {
+                        await axios.post(`${BUS_SERVICE}/api/buses/${encodeURIComponent(productId)}/slots/release`, {
+                            dateIso: oldDateIso,
+                            seats: oldSeats,
+                            reservationId: originalOrder.orderNumber,
+                            orderNumber: originalOrder.orderNumber
+                        }, { timeout: 5000 });
+                        console.log(`Released seats ${oldSeats.join(', ')} for bus ${productId} on old date ${oldDateIso} (change calendar)`);
+                    } catch (e) {
+                        console.error('Release bus failed for old date:', e.message);
+                    }
+                }
+
+                // Reserve ngày mới
+                if (newDateIso) {
+                    try {
+                        const reserveBody = {
+                            dateIso: newDateIso,
+                            reservationId: originalOrder.orderNumber,
+                            orderNumber: originalOrder.orderNumber
+                        };
+                        if (newSeats.length > 0) {
+                            reserveBody.seats = newSeats;
+                        } else {
+                            // Fallback: reserve theo count nếu không có seats
+                            const { seatCount } = seatConsumingCounts(snapshot, it);
+                            reserveBody.count = seatCount;
+                        }
+                        await axios.post(`${BUS_SERVICE}/api/buses/${encodeURIComponent(productId)}/slots/reserve`, reserveBody, { timeout: 5000 });
+                        console.log(`Reserved seats ${newSeats.join(', ') || `count: ${reserveBody.count}`} for bus ${productId} on new date ${newDateIso} (change calendar)`);
+                    } catch (e) {
+                        console.error('Reserve bus failed for new date:', e.message);
+                    }
                 }
             }
         }
@@ -306,7 +373,7 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
                     providerReservationId: oldTicket.providerReservationId,
                     passengerIndex: oldTicket.passengerIndex,
                     passenger: oldTicket.passenger,
-                    seats: oldTicket.seats,
+                    seats: oldTicket.seats, // Giữ seats cũ, hoặc update nếu cần (cho bus: dùng newSeats nếu có)
                     travelDate: changeDate, // Dùng changeDate từ inforChangeCalendar
                     travelStart: oldTicket.travelStart,
                     travelEnd: oldTicket.travelEnd,
@@ -317,6 +384,27 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
                     ticketType: oldTicket.ticketType,
                     uniq: `${originalOrder.orderNumber}::changed::${Date.now()}`
                 };
+
+                // Nếu là bus, update seats mới (gán từng seat cho từng passenger)
+                if (oldTicket.type === 'bus') {
+                    let newSeats = [];
+                    try {
+                        const meta = originalOrder.inforChangeCalendar?.data?.meta;
+                        if (meta && Array.isArray(meta.selectedSeats)) {
+                            newSeats = meta.selectedSeats;
+                        }
+                    } catch (e) {
+                        console.error('Error parsing new seats for bus:', e.message);
+                    }
+                    // Gán seat cho passenger này
+                    const passengerObj = typeof oldTicket.passenger === 'string' ? JSON.parse(oldTicket.passenger) : oldTicket.passenger;
+                    const isInfant = passengerObj?.type === 'infant';
+                    if (!isInfant && newSeats[oldTicket.passengerIndex] !== undefined) {
+                        newTicketPayload.seats = [newSeats[oldTicket.passengerIndex]];
+                    } else {
+                        newTicketPayload.seats = [];
+                    }
+                }
 
                 const newTicketResp = await axios.post(`${TICKET_SERVICE_BASE}/api/tickets`, newTicketPayload, { timeout: 8000 });
                 const newTicket = newTicketResp.data?.ticket || newTicketResp.data;

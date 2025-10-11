@@ -2099,6 +2099,38 @@ function seatConsumingCounts(snapshot, it) {
   const seatCount = Math.max(1, adults + children); // infants do NOT consume seats
   return { seatCount, adults, children, infants, paxArr };
 }
+function paxCountsFromOrder(ord) {
+  const snap = ord?.metadata?.bookingDataSnapshot || ord?.metadata || {};
+  let adults = 0, children = 0, infants = 0;
+  if (Array.isArray(snap?.details?.passengers) && snap.details.passengers.length) {
+    for (const p of snap.details.passengers) {
+      const t = (p && p.type) ? String(p.type).toLowerCase() : 'adult';
+      if (t === 'infant') infants++;
+      else if (t === 'child') children++;
+      else adults++;
+    }
+  } else if (snap?.passengers?.counts) {
+    const c = snap.passengers.counts;
+    adults = Number(c.adults || 0);
+    children = Number(c.children || 0);
+    infants = Number(c.infants || 0);
+  } else if (Array.isArray(ord?.items) && ord.items.length && Array.isArray(ord.items[0]?.passengers) && ord.items[0].passengers.length) {
+    // fallback if item itself contains passengers
+    for (const p of ord.items[0].passengers) {
+      const t = (p && p.type) ? String(p.type).toLowerCase() : 'adult';
+      if (t === 'infant') infants++;
+      else if (t === 'child') children++;
+      else adults++;
+    }
+  } else {
+    // last fallback: use item.quantity as adults
+    const q = Number(ord?.items?.[0]?.quantity || 1);
+    adults = Math.max(1, q);
+  }
+  const seatCount = Math.max(1, adults + children); // infants don't consume seats
+  return { adults, children, infants, seatCount };
+}
+// 2 cái re này của tour nhớ
 async function reserveViaHttp(tourId, dateIso, paxCount, reservationId = null, orderNumber = null) {
   const body = { tourId, dateIso, paxCount: Number(paxCount || 0) };
   if (reservationId) body.reservationId = reservationId;
@@ -2605,71 +2637,132 @@ app.post('/api/orders/:id/mark-paid', async (req, res) => {
 app.post('/api/orders/:id/change-calendar', async (req, res) => {
   try {
     const { id } = req.params;
-    const { newDate, newTime, selectedOption, passengers, changeFeePerPax, fareDiff, totalpayforChange: clientTotalPay } = req.body; // Nhận từ FE nếu có
+    const { newDate, newTime, selectedOption, passengers, changeFeePerPax, fareDiff, totalpayforChange, selectedSeats } = req.body;
 
-    // Tìm order
-    const order = await Order.findOne({ $or: [{ _id: id }, { orderNumber: id }] });
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
+    // Validate input cơ bản
+    if (!newDate || !selectedOption) {
+      return res.status(400).json({ error: 'Missing required fields: newDate, selectedOption' });
     }
 
-    // Lấy thông tin từ snapshot để tính toán
-    const snapshot = order?.metadata?.bookingDataSnapshot || order?.metadata || {};
-    const origServiceDate = snapshot?.details?.startDateTime || snapshot?.details?.date || order?.items?.[0]?.travelDate;
+    // Find order
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      order = await Order.findById(id);
+    }
+    if (!order) order = await Order.findOne({ orderNumber: id });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    // Extract snapshot and item
+    const snapshot = order.metadata?.bookingDataSnapshot || order.metadata || {};
+    const item = Array.isArray(order.items) && order.items[0] ? order.items[0] : null;
+    if (!item) return res.status(400).json({ error: 'Order has no items' });
+
+    // Calculate pax counts
+    const pc = paxCountsFromOrder(order);
+    console.log('paxCounts:', pc); // Debug log
+    const adults = pc.adults;
+    const children = pc.children;
+    const infants = pc.infants;
+    const totalPax = adults + children; // Giả sử không tính infant cho phạt bus
+
+    // Validate pax counts
+    if (totalPax <= 0) {
+      return res.status(400).json({ error: 'Invalid passenger counts' });
+    }
+
+    // Calculate new total base
+    let computedNewTotalBase = 0;
+    if (selectedOption.perPax) {
+      const pp = selectedOption.perPax;
+      computedNewTotalBase = (Number(pp.adult || 0) * adults) + (Number(pp.child || 0) * children) + (Number(pp.infant || 0) * infants);
+    } else {
+      computedNewTotalBase = Number(selectedOption.fare || 0);
+    }
+    console.log('computedNewTotalBase:', computedNewTotalBase); // Debug log
+
+    // Original totals
+    const origBase = Number(order?.metadata?.bookingDataSnapshot?.pricing?.basePrice ?? order?.subtotal ?? (order?.total ? (Number(order.total) - Number(order.tax || 0)) : 0));
+    const origTax = Number(order?.metadata?.bookingDataSnapshot?.pricing?.taxes ?? order?.tax ?? 0);
+    const computedNewTax = origBase > 0 ? Math.round(origTax * (computedNewTotalBase / origBase)) : origTax;
+    const computedNewTotal = computedNewTotalBase + computedNewTax;
     const currentTotal = Number(order.total || 0);
-    const origBase = Number(snapshot?.pricing?.basePrice || order?.subtotal || (currentTotal - Number(order.tax || 0)));
-    const origTax = Number(snapshot?.pricing?.taxes || order.tax || 0);
+    const diff = computedNewTotal - currentTotal;
+    console.log('diff:', diff, 'currentTotal:', currentTotal, 'computedNewTotal:', computedNewTotal); // Debug log
 
-    // Tính số ngày còn lại đến service date (để áp dụng penalty)
-    let daysUntilService = Infinity;
-    if (origServiceDate) {
-      const serviceDate = new Date(origServiceDate);
-      const now = new Date();
-      daysUntilService = Math.ceil((serviceDate - now) / (1000 * 60 * 60 * 24));
+    // Penalty calculation for bus
+    let penAmount = 0;
+    if (item.type === 'bus') {
+      const sdRaw = snapshot?.details?.startDateTime ?? snapshot?.details?.date ?? order.createdAt;
+      if (sdRaw) {
+        const sd = new Date(sdRaw);
+        const now = new Date();
+        const hoursDiff = (sd.getTime() - now.getTime()) / (1000 * 60 * 60);
+        console.log('hoursDiff:', hoursDiff); // Debug log
+        if (hoursDiff >= 72) {
+          penAmount = 50000 * totalPax;
+        } else if (hoursDiff >= 24) {
+          penAmount = 50000 * totalPax + 0.25 * currentTotal;
+        } else {
+          return res.status(400).json({ error: 'Cannot change calendar: less than 24 hours before departure' });
+        }
+      }
+    } else {
+      // Tour/flight: giữ nguyên logic cũ
+      let daysUntilService = Infinity;
+      try {
+        const sdRaw = snapshot?.details?.startDateTime ?? snapshot?.details?.date ?? order.createdAt;
+        if (sdRaw) {
+          const sd = new Date(sdRaw);
+          const today = new Date();
+          const t0 = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+          const t1 = Date.UTC(sd.getFullYear(), sd.getMonth(), sd.getDate());
+          daysUntilService = Math.ceil((t1 - t0) / (1000 * 60 * 60 * 24));
+        }
+      } catch (e) {
+        console.warn('Error calculating days until service:', e.message);
+      }
+      let pp = 0;
+      if (typeof daysUntilService === 'number') {
+        if (daysUntilService > 5) pp = 0.30;
+        else if (daysUntilService > 3) pp = 0.50;
+        else pp = 1.00;
+      }
+      penAmount = Math.round(Number(currentTotal) * pp);
     }
+    console.log('penAmount:', penAmount); // Debug log
 
-    // Logic penalty (giống client: >5 ngày: 30%, 3-5 ngày: 50%, <=3 ngày: 100%)
-    let penaltyPercent = 0;
-    if (daysUntilService > 5) penaltyPercent = 0.3;
-    else if (daysUntilService > 3) penaltyPercent = 0.5;
-    else penaltyPercent = 1.0;
-    const penaltyAmount = Math.round(currentTotal * penaltyPercent);
-
-    // Tính newPrice (giả sử selectedOption.fare là giá mới cho tất cả passengers)
-    const newBase = selectedOption?.fare ? selectedOption.fare * passengers : origBase;
-    const newTax = origBase > 0 ? Math.round(origTax * (newBase / origBase)) : origTax;
-    const newTotal = newBase + newTax;
-    const diff = newTotal - currentTotal;
-
-    // Xác định extraPay hoặc refund sau penalty
+    // Amount due/refund
     let amountDue = 0;
     let refund = 0;
     if (diff >= 0) {
-      amountDue = diff + penaltyAmount; // Phạt cộng thêm nếu tăng giá
+      amountDue = Math.max(0, diff) + penAmount;
     } else {
-      refund = Math.max(0, -diff - penaltyAmount); // Hoàn tiền sau trừ phạt
-    }
-
-    // Tính totalpayforChange: Sử dụng amountDue từ server (ưu tiên), hoặc validate với client nếu gửi
-    let totalpayforChange = amountDue;
-    if (typeof clientTotalPay === 'number' && clientTotalPay >= 0) {
-      // Nếu FE gửi, kiểm tra khớp với server (tùy chọn, có thể bỏ qua nếu không cần)
-      if (Math.abs(clientTotalPay - amountDue) > 1) { // Cho phép sai số nhỏ
-        console.warn('Client totalpayforChange mismatch:', { client: clientTotalPay, server: amountDue });
+      const refundGross = Math.max(0, -diff);
+      if (refundGross > penAmount) {
+        refund = refundGross - penAmount;
+        amountDue = 0;
+      } else {
+        refund = 0;
+        amountDue = penAmount - refundGross;
       }
-      totalpayforChange = amountDue; // Vẫn dùng server để đảm bảo
+    }
+    console.log('amountDue:', amountDue, 'refund:', refund); // Debug log
+
+    // Validate amountDue không NaN
+    if (isNaN(amountDue)) {
+      return res.status(400).json({ error: 'Invalid amountDue calculation' });
     }
 
-    // Generate codeChange nếu chưa có
-    const codeChange = order.inforChangeCalendar?.codeChange || `ORD_FORCHANGE_${Date.now()}`;
+    // Generate codeChange
+    const codeChange = `ORD_FORCHANGE_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
-    // Update inforChangeCalendar
+    // Update order
     order.inforChangeCalendar = {
-      penalty: penaltyAmount,
-      newPrice: newTotal,
+      penalty: penAmount,
+      newPrice: computedNewTotal,
       diff: diff,
       paymentType: amountDue > 0 ? 'pay' : 'refund',
-      transId: null, // Sẽ update khi thanh toán
+      transId: null,
       zp_trans_id: null,
       status: 'pending',
       currency: 'VND',
@@ -2677,29 +2770,34 @@ app.post('/api/orders/:id/change-calendar', async (req, res) => {
       data: {
         changeDate: newDate,
         note: `Đổi lịch sang ${newDate} ${newTime}`,
-        meta: { newTime, selectedOption, passengers, changeFeePerPax, fareDiff }
+        meta: {
+          newTime,
+          selectedOption,
+          passengers,
+          changeFeePerPax,
+          fareDiff,
+          selectedSeats: Array.isArray(selectedSeats) ? selectedSeats : [] // Lưu selectedSeats
+        }
       },
-      totalpayforChange: totalpayforChange // Trường mới
+      totalpayforChange: totalpayforChange
     };
     order.changeCalendar = true;
     order.dateChangeCalendar = newDate;
+
     await order.save();
 
-    // Trả về thông tin cho client (để gọi API thanh toán)
+    // Response
     res.json({
-      success: true,
-      orderId: order._id,
-      codeChange: codeChange,
-      amountDue: amountDue,
-      refund: refund,
-      penaltyAmount: penaltyAmount,
-      newTotal: newTotal,
-      diff: diff,
-      totalpayforChange: totalpayforChange // Trả về cho FE nếu cần
+      codeChange,
+      amountDue,
+      refund,
+      penaltyAmount: penAmount,
+      newTotal: computedNewTotal,
+      diff
     });
   } catch (err) {
     console.error('Error updating change calendar:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', details: err.message });
   }
 });
 
