@@ -16,11 +16,43 @@ app.use(cors());
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 const ORDERS_API_BASE = process.env.ORDERS_API_BASE || 'http://localhost:7700';
+const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:8080';
+
 // ...existing code...
 function toDateIso(v) {
     try { return (new Date(v)).toISOString().split('T')[0]; } catch { return null; }
 }
+async function reserveViaHttp(tourId, dateIso, paxCount, reservationId = null, orderNumber = null) {
+    const body = { tourId, dateIso, paxCount: Number(paxCount || 0) };
+    if (reservationId) body.reservationId = reservationId;
+    if (orderNumber) body.orderNumber = orderNumber;
+    const r = await fetch(`${TOUR_SERVICE}/api/tours/slots/reserve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+        const txt = await r.text().catch(() => '');
+        throw new Error(`reserve failed ${r.status} ${txt}`);
+    }
+    return r.json();
+}
 
+async function releaseViaHttp(tourId, dateIso, reservationId = null, orderNumber = null) {
+    const body = { tourId, dateIso };
+    if (reservationId) body.reservationId = reservationId;
+    if (orderNumber) body.orderNumber = orderNumber;
+    const r = await fetch(`${TOUR_SERVICE}/api/tours/slots/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+        const txt = await r.text().catch(() => '');
+        throw new Error(`release failed ${r.status} ${txt}`);
+    }
+    return r.json();
+}
 // New helper: compute seat-consuming pax (adults + children) from snapshot/details.
 // Returns { seatCount, adults, children, infants, paxArr }
 function seatConsumingCounts(snapshot, it) {
@@ -79,6 +111,8 @@ async function issueTicketsForOrder(order) {
             throw e;
         }
     };
+
+
 
     for (const it of order.items || []) {
         const type = String(it.type || '').toLowerCase();
@@ -184,180 +218,342 @@ async function issueTicketsForOrder(order) {
     console.log('issueTicketsForOrder: created tickets count', created.length);
     return created;
 }
+const TICKET_SERVICE_BASE = process.env.TICKET_SERVICE_BASE || 'http://localhost:7700';
 
-// ...existing code...
+
+async function handleChangeCalendarPayment(originalOrder, method, txnId) {
+    try {
+        // Lấy thông tin từ inforChangeCalendar của order gốc
+        const changeCalendarData = originalOrder.inforChangeCalendar || {};
+        const changeDate = changeCalendarData.data?.changeDate || new Date().toISOString().split('T')[0];
+
+        // 1. Cập nhật inforChangeCalendar trong order gốc qua API
+        const updatePayload = {
+            changeCalendar: true,
+            dateChangeCalendar: changeDate,
+            inforChangeCalendar: {
+                ...changeCalendarData,
+                status: 'paid',
+                ...(method === 'momo' && { transId: txnId }),
+                ...(method === 'zalopay' && { zp_trans_id: txnId })
+            },
+            ticketIds: [], // Sẽ update sau
+            oldTicketIDs: originalOrder.ticketIds || [] // Lưu vé cũ
+        };
+
+        // Update order gốc qua API (thay vì save() trên plain object)
+        await axios.put(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(originalOrder._id || originalOrder.orderNumber)}`, updatePayload, { timeout: 5000 });
+
+        // 2. Release slots cho ngày cũ và reserve cho ngày mới (chỉ cho Tour)
+        const snapshot = originalOrder.metadata?.bookingDataSnapshot || {};
+        for (const it of originalOrder.items || []) {
+            if (it.type !== 'tour') continue; // Chỉ xử lý Tour
+            const tourId = it.productId || it.itemId;
+            if (!tourId) continue;
+
+            // Tính paxCount (adults + children)
+            const { seatCount } = seatConsumingCounts(snapshot, it);
+            const paxCount = seatCount;
+
+            // Ngày cũ: từ snapshot
+            const oldDateRaw = snapshot.details?.startDateTime ?? snapshot.details?.date;
+            const oldDateIso = toDateIso(oldDateRaw);
+            if (oldDateIso) {
+                try {
+                    await releaseViaHttp(tourId, oldDateIso, null, originalOrder.orderNumber);
+                    console.log(`Released ${paxCount} pax for tour ${tourId} on old date ${oldDateIso} (change calendar)`);
+                } catch (e) {
+                    console.error('Release tour failed for old date:', e.message);
+                }
+            }
+
+            // Ngày mới: từ changeDate
+            if (changeDate) {
+                try {
+                    await reserveViaHttp(tourId, changeDate, paxCount, null, originalOrder.orderNumber);
+                    console.log(`Reserved ${paxCount} pax for tour ${tourId} on new date ${changeDate} (change calendar)`);
+                } catch (e) {
+                    console.error('Reserve tour failed for new date:', e.message);
+                }
+            }
+        }
+
+        // 3. Lấy vé cũ từ oldTicketIDs hoặc ticketIds và xử lý qua API
+        const oldTicketIds = originalOrder.oldTicketIDs || originalOrder.ticketIds || [];
+        const newTickets = [];
+
+        for (const ticketId of oldTicketIds) {
+            try {
+                // Lấy thông tin vé cũ qua API
+                const oldTicketResp = await axios.get(`${TICKET_SERVICE_BASE}/api/tickets/${encodeURIComponent(ticketId)}`, { timeout: 5000 });
+                const oldTicket = oldTicketResp.data?.ticket || oldTicketResp.data;
+                if (!oldTicket) continue;
+
+                // Cập nhật status vé cũ thành 'cancelled' qua API
+                await axios.patch(`${TICKET_SERVICE_BASE}/api/tickets/${encodeURIComponent(ticketId)}/status`, {
+                    status: 'cancelled',
+                    reason: 'Đổi lịch - vé cũ bị hủy',
+                    by: { type: 'system', reason: 'change_calendar' }
+                }, { timeout: 5000 });
+
+                // Tạo vé mới qua API (dùng changeDate từ inforChangeCalendar)
+                const newTicketPayload = {
+                    ticketNumber: `TKT_${originalOrder.orderNumber}_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+                    orderId: originalOrder._id,
+                    orderNumber: originalOrder.orderNumber,
+                    type: oldTicket.type,
+                    productId: oldTicket.productId,
+                    providerReservationId: oldTicket.providerReservationId,
+                    passengerIndex: oldTicket.passengerIndex,
+                    passenger: oldTicket.passenger,
+                    seats: oldTicket.seats,
+                    travelDate: changeDate, // Dùng changeDate từ inforChangeCalendar
+                    travelStart: oldTicket.travelStart,
+                    travelEnd: oldTicket.travelEnd,
+                    price: oldTicket.price,
+                    currency: oldTicket.currency,
+                    reservationInfo: oldTicket.reservationInfo,
+                    status: 'changed', // Status mới
+                    ticketType: oldTicket.ticketType,
+                    uniq: `${originalOrder.orderNumber}::changed::${Date.now()}`
+                };
+
+                const newTicketResp = await axios.post(`${TICKET_SERVICE_BASE}/api/tickets`, newTicketPayload, { timeout: 8000 });
+                const newTicket = newTicketResp.data?.ticket || newTicketResp.data;
+                if (newTicket && newTicket._id) {
+                    newTickets.push(newTicket._id);
+                }
+            } catch (err) {
+                console.error('Error processing ticket via API:', ticketId, err.response?.data || err.message);
+                // Tiếp tục với vé khác nếu có lỗi
+            }
+        }
+
+        // 4. Cập nhật ticketIds trong order gốc qua API
+        await axios.patch(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(originalOrder._id || originalOrder.orderNumber)}`, {
+            ticketIds: newTickets,
+            oldTicketIDs: oldTicketIds
+        }, { timeout: 5000 });
+
+        console.log(`Change calendar payment processed for order ${originalOrder.orderNumber}`);
+    } catch (err) {
+        console.error('handleChangeCalendarPayment error:', err);
+        throw err;
+    }
+}
+
+
+
 // find location near end of markOrderPaid where reservations done, then call:
-async function markOrderPaid(orderRef, method = 'unknown', txnId = null) {
+async function markOrderPaid(orderRef, method = 'unknown', txnId = null, extraData = {}) {
     if (!orderRef) {
         console.warn('markOrderPaid: missing orderRef, skip update');
         return;
     }
     try {
-        const body = {
-            paymentStatus: 'paid',
-            paymentMethod: method,
-            orderStatus: 'confirmed',
-        };
-        if (txnId) {
-            if (method === 'momo') body.transId = txnId;
-            else if (method === 'zalopay') body.zp_trans_id = txnId;
-            else body.paymentReference = txnId;
+        // Kiểm tra nếu là callback cho đơn đổi lịch
+        const isChangeCalendar = String(orderRef).startsWith('ORD_FORCHANGE_');
+        let originalOrder = null;
+
+        if (isChangeCalendar) {
+            // Lấy order gốc từ extraData (MoMo/ZaloPay có originalOrder)
+            const originalOrderRef = extraData.originalOrder || extraData.orderNumber;
+            if (originalOrderRef) {
+                // Lấy order gốc qua API
+                const orderResp = await axios.get(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(originalOrderRef)}`, { timeout: 5000 });
+                originalOrder = orderResp.data;
+                if (!originalOrder) {
+                    console.warn('markOrderPaid: original order not found for change calendar');
+                    return;
+                }
+            } else {
+                console.warn('markOrderPaid: no original order reference in extraData');
+                return;
+            }
+        } else {
+            // Luồng bình thường: lấy order gốc qua API
+            const orderResp = await axios.get(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(orderRef)}`, { timeout: 5000 });
+            originalOrder = orderResp.data;
+            if (!originalOrder) {
+                console.warn('markOrderPaid: order not found');
+                return;
+            }
         }
 
-        // update order status in Orders service
-        await axios.put(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(orderRef)}`, body, { timeout: 5000 });
-        console.log(`Order ${orderRef} updated:`, body);
+        if (isChangeCalendar) {
+            // Logic đặc biệt cho đổi lịch
+            await handleChangeCalendarPayment(originalOrder, method, txnId);
+        } else {
 
-        // fetch updated order to inspect items/metadata
-        let order = null;
-        try {
-            const resp = await axios.get(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(orderRef)}`, { timeout: 5000 });
-            order = resp.data;
-        } catch (err) {
-            console.warn('markOrderPaid: failed to fetch order details', err.response?.data || err.message);
-        }
 
-        // If order contains tour items, call tour-service to reserve slots
-        if (order && Array.isArray(order.items) && order.items.length) {
-            const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:8080';
-            const BUS_SERVICE = process.env.BUS_SERVICE_BASE || ORDERS_API_BASE; // bus endpoints live on orders app in local setup
-            const snapshot = order.metadata?.bookingDataSnapshot || order.metadata || {};
 
-            // reserve for tour items
-            const tourReservations = [];
-            for (const it of order.items) {
-                if (!it || (it.type && String(it.type).toLowerCase() !== 'tour')) continue;
-                const tourId = it.productId || it.itemId;
-                if (!tourId) continue;
-
-                const dateRaw = snapshot.details?.startDateTime ?? snapshot.details?.date ?? snapshot.date;
-                const dateIso = dateRaw ? new Date(dateRaw).toISOString().split('T')[0] : null;
-
-                // let paxCount = 1;
-                // if (Array.isArray(snapshot.details?.passengers)) {
-                //     paxCount = snapshot.details.passengers.length || 1;
-                // } else if (snapshot.passengers?.counts) {
-                //     const c = snapshot.passengers.counts;
-                //     paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
-                // } else {
-                //     paxCount = Number(it.quantity || 1) || 1;
-                // }
-                // compute seat-consuming pax (adults + children). infants do NOT consume seats.
-                const { seatCount } = seatConsumingCounts(snapshot, it);
-                const paxCount = seatCount;
-                if (!dateIso) {
-                    console.warn('markOrderPaid: missing dateIso for tour item', { tourId, orderRef });
-                    continue;
-                }
-
-                const reservationId = order.orderNumber || orderRef;
-                const reqBody = { tourId, dateIso, paxCount, reservationId, orderNumber: order.orderNumber || orderRef, customerId: order.customerId || null };
-
-                try {
-                    const resp = await axios.post(`${TOUR_SERVICE}/api/tours/slots/reserve`, reqBody, { timeout: 5000 });
-                    console.log(`Reserved ${paxCount} pax for tour ${tourId} on ${dateIso}`, resp.data);
-                    tourReservations.push({ tourId, dateIso, paxCount, reservationId });
-                } catch (err) {
-                    console.error(`Failed to reserve slot for tour ${tourId} ${dateIso}:`, err.response?.data || err.message);
-                    // rollback previous tour reservations (best-effort)
-                    for (const r of tourReservations) {
-                        try {
-                            await axios.post(`${TOUR_SERVICE}/api/tours/slots/release`, {
-                                tourId: r.tourId,
-                                dateIso: r.dateIso,
-                                reservationId: r.reservationId,
-                                orderNumber: order.orderNumber || orderRef
-                            }, { timeout: 5000 });
-                            console.log('Rolled back tour reservation', r);
-                        } catch (releaseErr) {
-                            console.error('Rollback release failed for tour', r, releaseErr.response?.data || releaseErr.message);
-                        }
-                    }
-                    // continue to bus reservation but notify/alert as needed
-                    break;
-                }
+            const body = {
+                paymentStatus: 'paid',
+                paymentMethod: method,
+                orderStatus: 'confirmed',
+            };
+            if (txnId) {
+                if (method === 'momo') body.transId = txnId;
+                else if (method === 'zalopay') body.zp_trans_id = txnId;
+                else body.paymentReference = txnId;
             }
 
-            // reserve for bus items (idempotent by using reservationId = orderNumber)
-            const reservations = []; // track succeeded reservations to rollback on partial failure
-            for (const it of order.items) {
-                if (!it || (it.type && String(it.type).toLowerCase() !== 'bus')) continue;
-                const busId = it.productId || it.itemId;
-                if (!busId) continue;
+            // update order status in Orders service
+            await axios.put(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(orderRef)}`, body, { timeout: 5000 });
+            console.log(`Order ${orderRef} updated:`, body);
 
-                // date: prefer meta.departureDateIso then details.date
-                const dateRaw = snapshot.meta?.departureDateIso ?? snapshot.details?.date ?? snapshot.date;
-                const dateIso = dateRaw ? new Date(dateRaw).toISOString().split('T')[0] : null;
-
-                if (!dateIso) {
-                    console.warn('markOrderPaid: missing dateIso for bus item', { busId, orderRef });
-                    continue;
-                }
-
-                const seats = Array.isArray(snapshot.details?.seats) && snapshot.details.seats.length ? snapshot.details.seats : null;
-                // let paxCount = 1;
-                // if (Array.isArray(snapshot.details?.passengers)) paxCount = snapshot.details.passengers.length;
-                // else if (snapshot.passengers?.counts) {
-                //     const c = snapshot.passengers.counts;
-                //     paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
-                // } else paxCount = Number(it.quantity || 1) || 1;
-                // compute seat-consuming pax (adults + children). infants do NOT consume seats.
-                const { seatCount } = seatConsumingCounts(snapshot, it);
-                const paxCount = seatCount;
-
-                const reservationId = order.orderNumber || orderRef;
-                const reqBody = { dateIso };
-                // if (seats) reqBody.seats = seats;
-                // else reqBody.count = paxCount;
-                if (seats) reqBody.seats = seats;
-                else reqBody.count = paxCount; // paxCount = adults + children (infants excluded)
-                reqBody.reservationId = reservationId;
-                reqBody.orderNumber = order.orderNumber || orderRef;
-                reqBody.customerId = order.customerId || order.customerId;
-
-                try {
-                    const resp = await axios.post(`${BUS_SERVICE}/api/buses/${encodeURIComponent(busId)}/slots/reserve`, reqBody, { timeout: 5000 });
-                    console.log(`Bus reserve success for bus ${busId} on ${dateIso}`, resp.data);
-                    reservations.push({ busId, dateIso, seats, paxCount, reservationId });
-                } catch (err) {
-                    console.error(`Failed to reserve seats for bus ${busId} on ${dateIso}:`, err.response?.data || err.message);
-                    // rollback previous bus reservations created in this loop (best-effort)
-                    for (const r of reservations) {
-                        try {
-                            const body = { dateIso: r.dateIso };
-                            // prefer explicit seats array when available
-                            if (Array.isArray(r.seats) && r.seats.length) body.seats = r.seats;
-                            // fallback: do not rely on count unless bus API supports it; keep as optional
-                            else if (Number.isFinite(Number(r.paxCount)) && Number(r.paxCount) > 0) body.count = Number(r.paxCount);
-                            // use reservationId / orderNumber from the recorded reservation
-                            if (r.reservationId) body.reservationId = r.reservationId;
-                            if (r.orderNumber) body.orderNumber = r.orderNumber;
-
-                            await axios.post(`${BUS_SERVICE}/api/buses/${encodeURIComponent(r.busId)}/slots/release`, body, { timeout: 5000 });
-                            console.log('Rolled back reservation for bus', { busId: r.busId, dateIso: r.dateIso, reservationId: body.reservationId, seats: body.seats, count: body.count });
-                        } catch (releaseErr) {
-                            console.error('Rollback release failed for', r, releaseErr.response?.data || releaseErr.message);
-                        }
-                    }
-                    // do not throw to avoid failing markOrderPaid; notify/alert instead
-                }
-            } // end bus loop
-
+            // fetch updated order to inspect items/metadata
+            let order = null;
             try {
-                if (order) {
+                const resp = await axios.get(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(orderRef)}`, { timeout: 5000 });
+                order = resp.data;
+            } catch (err) {
+                console.warn('markOrderPaid: failed to fetch order details', err.response?.data || err.message);
+            }
+
+            // If order contains tour items, call tour-service to reserve slots
+            if (order && Array.isArray(order.items) && order.items.length) {
+                const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:8080';
+                const BUS_SERVICE = process.env.BUS_SERVICE_BASE || ORDERS_API_BASE; // bus endpoints live on orders app in local setup
+                const snapshot = order.metadata?.bookingDataSnapshot || order.metadata || {};
+
+                // reserve for tour items
+                const tourReservations = [];
+                for (const it of order.items) {
+                    if (!it || (it.type && String(it.type).toLowerCase() !== 'tour')) continue;
+                    const tourId = it.productId || it.itemId;
+                    if (!tourId) continue;
+
+                    const dateRaw = snapshot.details?.startDateTime ?? snapshot.details?.date ?? snapshot.date;
+                    const dateIso = dateRaw ? new Date(dateRaw).toISOString().split('T')[0] : null;
+
+                    // let paxCount = 1;
+                    // if (Array.isArray(snapshot.details?.passengers)) {
+                    //     paxCount = snapshot.details.passengers.length || 1;
+                    // } else if (snapshot.passengers?.counts) {
+                    //     const c = snapshot.passengers.counts;
+                    //     paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
+                    // } else {
+                    //     paxCount = Number(it.quantity || 1) || 1;
+                    // }
+                    // compute seat-consuming pax (adults + children). infants do NOT consume seats.
+                    const { seatCount } = seatConsumingCounts(snapshot, it);
+                    const paxCount = seatCount;
+                    if (!dateIso) {
+                        console.warn('markOrderPaid: missing dateIso for tour item', { tourId, orderRef });
+                        continue;
+                    }
+
+                    const reservationId = order.orderNumber || orderRef;
+                    const reqBody = { tourId, dateIso, paxCount, reservationId, orderNumber: order.orderNumber || orderRef, customerId: order.customerId || null };
+
                     try {
-                        const createdTickets = await issueTicketsForOrder(order);
-                        console.log('Tickets issued for order', orderRef, 'count=', createdTickets.length);
-                    } catch (e) {
-                        console.error('markOrderPaid: failed to issue tickets for', orderRef, e?.message || e);
-                        // don't throw — we already updated order/payment; just log error for manual retry
+                        const resp = await axios.post(`${TOUR_SERVICE}/api/tours/slots/reserve`, reqBody, { timeout: 5000 });
+                        console.log(`Reserved ${paxCount} pax for tour ${tourId} on ${dateIso}`, resp.data);
+                        tourReservations.push({ tourId, dateIso, paxCount, reservationId });
+                    } catch (err) {
+                        console.error(`Failed to reserve slot for tour ${tourId} ${dateIso}:`, err.response?.data || err.message);
+                        // rollback previous tour reservations (best-effort)
+                        for (const r of tourReservations) {
+                            try {
+                                await axios.post(`${TOUR_SERVICE}/api/tours/slots/release`, {
+                                    tourId: r.tourId,
+                                    dateIso: r.dateIso,
+                                    reservationId: r.reservationId,
+                                    orderNumber: order.orderNumber || orderRef
+                                }, { timeout: 5000 });
+                                console.log('Rolled back tour reservation', r);
+                            } catch (releaseErr) {
+                                console.error('Rollback release failed for tour', r, releaseErr.response?.data || releaseErr.message);
+                            }
+                        }
+                        // continue to bus reservation but notify/alert as needed
+                        break;
                     }
                 }
-            } catch (errInner) {
-                // noop: this outer try/catch continues existing behavior
+
+                // reserve for bus items (idempotent by using reservationId = orderNumber)
+                const reservations = []; // track succeeded reservations to rollback on partial failure
+                for (const it of order.items) {
+                    if (!it || (it.type && String(it.type).toLowerCase() !== 'bus')) continue;
+                    const busId = it.productId || it.itemId;
+                    if (!busId) continue;
+
+                    // date: prefer meta.departureDateIso then details.date
+                    const dateRaw = snapshot.meta?.departureDateIso ?? snapshot.details?.date ?? snapshot.date;
+                    const dateIso = dateRaw ? new Date(dateRaw).toISOString().split('T')[0] : null;
+
+                    if (!dateIso) {
+                        console.warn('markOrderPaid: missing dateIso for bus item', { busId, orderRef });
+                        continue;
+                    }
+
+                    const seats = Array.isArray(snapshot.details?.seats) && snapshot.details.seats.length ? snapshot.details.seats : null;
+                    // let paxCount = 1;
+                    // if (Array.isArray(snapshot.details?.passengers)) paxCount = snapshot.details.passengers.length;
+                    // else if (snapshot.passengers?.counts) {
+                    //     const c = snapshot.passengers.counts;
+                    //     paxCount = Number(c.adults || 0) + Number(c.children || 0) + Number(c.infants || 0) || 1;
+                    // } else paxCount = Number(it.quantity || 1) || 1;
+                    // compute seat-consuming pax (adults + children). infants do NOT consume seats.
+                    const { seatCount } = seatConsumingCounts(snapshot, it);
+                    const paxCount = seatCount;
+
+                    const reservationId = order.orderNumber || orderRef;
+                    const reqBody = { dateIso };
+                    // if (seats) reqBody.seats = seats;
+                    // else reqBody.count = paxCount;
+                    if (seats) reqBody.seats = seats;
+                    else reqBody.count = paxCount; // paxCount = adults + children (infants excluded)
+                    reqBody.reservationId = reservationId;
+                    reqBody.orderNumber = order.orderNumber || orderRef;
+                    reqBody.customerId = order.customerId || order.customerId;
+
+                    try {
+                        const resp = await axios.post(`${BUS_SERVICE}/api/buses/${encodeURIComponent(busId)}/slots/reserve`, reqBody, { timeout: 5000 });
+                        console.log(`Bus reserve success for bus ${busId} on ${dateIso}`, resp.data);
+                        reservations.push({ busId, dateIso, seats, paxCount, reservationId });
+                    } catch (err) {
+                        console.error(`Failed to reserve seats for bus ${busId} on ${dateIso}:`, err.response?.data || err.message);
+                        // rollback previous bus reservations created in this loop (best-effort)
+                        for (const r of reservations) {
+                            try {
+                                const body = { dateIso: r.dateIso };
+                                // prefer explicit seats array when available
+                                if (Array.isArray(r.seats) && r.seats.length) body.seats = r.seats;
+                                // fallback: do not rely on count unless bus API supports it; keep as optional
+                                else if (Number.isFinite(Number(r.paxCount)) && Number(r.paxCount) > 0) body.count = Number(r.paxCount);
+                                // use reservationId / orderNumber from the recorded reservation
+                                if (r.reservationId) body.reservationId = r.reservationId;
+                                if (r.orderNumber) body.orderNumber = r.orderNumber;
+
+                                await axios.post(`${BUS_SERVICE}/api/buses/${encodeURIComponent(r.busId)}/slots/release`, body, { timeout: 5000 });
+                                console.log('Rolled back reservation for bus', { busId: r.busId, dateIso: r.dateIso, reservationId: body.reservationId, seats: body.seats, count: body.count });
+                            } catch (releaseErr) {
+                                console.error('Rollback release failed for', r, releaseErr.response?.data || releaseErr.message);
+                            }
+                        }
+                        // do not throw to avoid failing markOrderPaid; notify/alert instead
+                    }
+                } // end bus loop
+
+                try {
+                    if (order) {
+                        try {
+                            const createdTickets = await issueTicketsForOrder(order);
+                            console.log('Tickets issued for order', orderRef, 'count=', createdTickets.length);
+                        } catch (e) {
+                            console.error('markOrderPaid: failed to issue tickets for', orderRef, e?.message || e);
+                            // don't throw — we already updated order/payment; just log error for manual retry
+                        }
+                    }
+                } catch (errInner) {
+                    // noop: this outer try/catch continues existing behavior
+                }
             }
-        } // end if order && items
-    } catch (err) {
+        }
+    } // end if order && items
+    catch (err) {
         console.error(`Failed to update order ${orderRef} on ${ORDERS_API_BASE}:`, err.response?.data || err.message);
     }
 }
@@ -460,8 +656,12 @@ app.post('/momo/callback', async (req, res) => {
         const txnId = body.transId || body.transactionId || body.requestId || null;
 
         if (success && orderRef) {
-            // update order in orders service
-            await markOrderPaid(orderRef, 'momo', txnId);
+            // Parse extraData từ MoMo
+            let extraData = {};
+            try {
+                if (body.extraData) extraData = JSON.parse(body.extraData);
+            } catch (e) { }
+            await markOrderPaid(orderRef, 'momo', txnId, extraData);
         } else {
             console.log('[MoMo] callback not-success or missing orderRef:', { success, orderRef, body });
         }
@@ -690,7 +890,9 @@ app.post('/zalo/callback', async (req, res) => {
 
         if (success && orderRef) {
             try {
-                await markOrderPaid(orderRef, 'zalopay', String(zpTransId || ''));
+                // embed_data đã parse thành embeddedOrderNumber
+                const extraData = { originalOrder: embeddedOrderNumber };
+                await markOrderPaid(orderRef, 'zalopay', zpTransId, extraData);
                 console.log(`[ZaloPay] markOrderPaid called for ${orderRef} zp_trans_id=${zpTransId}`);
             } catch (e) {
                 console.error('[ZaloPay] markOrderPaid error:', e?.message || e);

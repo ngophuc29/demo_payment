@@ -2230,7 +2230,9 @@ const OrderSchema = new mongoose.Schema({
       changeDate: { type: String, default: null }, // YYYY-MM-DD of the new date
       note: { type: String, default: '' },
       meta: { type: mongoose.Schema.Types.Mixed, default: {} }
-    }
+    },
+    // Trường mới: Tổng số tiền phải trả cho việc đổi lịch
+    totalpayforChange: { type: Number, default: 0 }
   },
   timeline: { type: [TimelineSchema], default: [] },
   notes: { type: [String], default: [] },
@@ -2445,7 +2447,7 @@ app.put('/api/orders/:id', async (req, res) => {
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     // apply updates: allow payment fields to be updated
-    const allowed = ['customerName', 'customerEmail', 'customerPhone', 'customerAddress', 'items', 'subtotal', 'discounts', 'fees', 'tax', 'total', 'paymentMethod', 'paymentStatus', 'orderStatus', 'transId', 'zp_trans_id', 'paymentReference', 'metadata', 'notes'];
+    const allowed = ['customerName', 'customerEmail', 'customerPhone', 'customerAddress', 'items', 'subtotal', 'discounts', 'fees', 'tax', 'total', 'paymentMethod', 'paymentStatus', 'orderStatus', 'transId', 'zp_trans_id', 'paymentReference', 'metadata', 'notes', 'inforChangeCalendar', 'changeCalendar', 'dateChangeCalendar', 'ticketIds', 'oldTicketIDs']; // Thêm các field này
     for (const k of allowed) {
       if (typeof payload[k] !== 'undefined') order[k] = payload[k];
     }
@@ -2599,6 +2601,107 @@ app.post('/api/orders/:id/mark-paid', async (req, res) => {
   }
 });
 
+// New endpoint: Handle change calendar request and update inforChangeCalendar
+app.post('/api/orders/:id/change-calendar', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newDate, newTime, selectedOption, passengers, changeFeePerPax, fareDiff, totalpayforChange: clientTotalPay } = req.body; // Nhận từ FE nếu có
+
+    // Tìm order
+    const order = await Order.findOne({ $or: [{ _id: id }, { orderNumber: id }] });
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Lấy thông tin từ snapshot để tính toán
+    const snapshot = order?.metadata?.bookingDataSnapshot || order?.metadata || {};
+    const origServiceDate = snapshot?.details?.startDateTime || snapshot?.details?.date || order?.items?.[0]?.travelDate;
+    const currentTotal = Number(order.total || 0);
+    const origBase = Number(snapshot?.pricing?.basePrice || order?.subtotal || (currentTotal - Number(order.tax || 0)));
+    const origTax = Number(snapshot?.pricing?.taxes || order.tax || 0);
+
+    // Tính số ngày còn lại đến service date (để áp dụng penalty)
+    let daysUntilService = Infinity;
+    if (origServiceDate) {
+      const serviceDate = new Date(origServiceDate);
+      const now = new Date();
+      daysUntilService = Math.ceil((serviceDate - now) / (1000 * 60 * 60 * 24));
+    }
+
+    // Logic penalty (giống client: >5 ngày: 30%, 3-5 ngày: 50%, <=3 ngày: 100%)
+    let penaltyPercent = 0;
+    if (daysUntilService > 5) penaltyPercent = 0.3;
+    else if (daysUntilService > 3) penaltyPercent = 0.5;
+    else penaltyPercent = 1.0;
+    const penaltyAmount = Math.round(currentTotal * penaltyPercent);
+
+    // Tính newPrice (giả sử selectedOption.fare là giá mới cho tất cả passengers)
+    const newBase = selectedOption?.fare ? selectedOption.fare * passengers : origBase;
+    const newTax = origBase > 0 ? Math.round(origTax * (newBase / origBase)) : origTax;
+    const newTotal = newBase + newTax;
+    const diff = newTotal - currentTotal;
+
+    // Xác định extraPay hoặc refund sau penalty
+    let amountDue = 0;
+    let refund = 0;
+    if (diff >= 0) {
+      amountDue = diff + penaltyAmount; // Phạt cộng thêm nếu tăng giá
+    } else {
+      refund = Math.max(0, -diff - penaltyAmount); // Hoàn tiền sau trừ phạt
+    }
+
+    // Tính totalpayforChange: Sử dụng amountDue từ server (ưu tiên), hoặc validate với client nếu gửi
+    let totalpayforChange = amountDue;
+    if (typeof clientTotalPay === 'number' && clientTotalPay >= 0) {
+      // Nếu FE gửi, kiểm tra khớp với server (tùy chọn, có thể bỏ qua nếu không cần)
+      if (Math.abs(clientTotalPay - amountDue) > 1) { // Cho phép sai số nhỏ
+        console.warn('Client totalpayforChange mismatch:', { client: clientTotalPay, server: amountDue });
+      }
+      totalpayforChange = amountDue; // Vẫn dùng server để đảm bảo
+    }
+
+    // Generate codeChange nếu chưa có
+    const codeChange = order.inforChangeCalendar?.codeChange || `ORD_FORCHANGE_${Date.now()}`;
+
+    // Update inforChangeCalendar
+    order.inforChangeCalendar = {
+      penalty: penaltyAmount,
+      newPrice: newTotal,
+      diff: diff,
+      paymentType: amountDue > 0 ? 'pay' : 'refund',
+      transId: null, // Sẽ update khi thanh toán
+      zp_trans_id: null,
+      status: 'pending',
+      currency: 'VND',
+      codeChange: codeChange,
+      data: {
+        changeDate: newDate,
+        note: `Đổi lịch sang ${newDate} ${newTime}`,
+        meta: { newTime, selectedOption, passengers, changeFeePerPax, fareDiff }
+      },
+      totalpayforChange: totalpayforChange // Trường mới
+    };
+    order.changeCalendar = true;
+    order.dateChangeCalendar = newDate;
+    await order.save();
+
+    // Trả về thông tin cho client (để gọi API thanh toán)
+    res.json({
+      success: true,
+      orderId: order._id,
+      codeChange: codeChange,
+      amountDue: amountDue,
+      refund: refund,
+      penaltyAmount: penaltyAmount,
+      newTotal: newTotal,
+      diff: diff,
+      totalpayforChange: totalpayforChange // Trả về cho FE nếu cần
+    });
+  } catch (err) {
+    console.error('Error updating change calendar:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 
 
