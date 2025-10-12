@@ -221,7 +221,7 @@ async function issueTicketsForOrder(order) {
 }
 const TICKET_SERVICE_BASE = process.env.TICKET_SERVICE_BASE || 'http://localhost:7700';
 
-
+// xử cho đổi vé
 async function handleChangeCalendarPayment(originalOrder, method, txnId) {
     try {
         // Lấy thông tin từ inforChangeCalendar của order gốc
@@ -431,7 +431,7 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
 }
 
 
-
+// xử lý đơn hàng khi call back ,chuyển status thành paid,...
 // find location near end of markOrderPaid where reservations done, then call:
 async function markOrderPaid(orderRef, method = 'unknown', txnId = null, extraData = {}) {
     if (!orderRef) {

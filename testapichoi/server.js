@@ -2373,7 +2373,25 @@ app.get('/api/orders/:id', async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch order', details: err.message });
   }
 });
+// GET /api/orders/:id/details - Trả về order + tickets
+app.get('/api/orders/:id/details', async (req, res) => {
+  try {
+    const { id } = req.params;
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(id)) order = await Order.findById(id);
+    if (!order) order = await Order.findOne({ orderNumber: id });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
 
+    // Lấy tickets liên quan, chỉ lấy status 'paid' hoặc 'changed'
+    const tickets = await Ticket.find({
+      orderId: order._id,
+      status: { $in: ['paid', 'changed'] }
+    }).sort({ passengerIndex: 1 });
+    res.json({ order, tickets });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // Create order
 app.post('/api/orders', async (req, res) => {
   try {
