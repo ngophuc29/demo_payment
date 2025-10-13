@@ -2061,7 +2061,7 @@ const TimelineSchema = new mongoose.Schema({
 }, { _id: false });
 
 
-const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:8080';
+const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:7700';
 
 function toDateIso(v) {
   try { return (new Date(v)).toISOString().split('T')[0]; } catch { return null; }

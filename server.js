@@ -16,7 +16,7 @@ app.use(cors());
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 const ORDERS_API_BASE = process.env.ORDERS_API_BASE || 'http://localhost:7700';
-const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:8080';
+const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:7700';
 const BUS_SERVICE = process.env.BUS_SERVICE_BASE || ORDERS_API_BASE || 'http://localhost:7700'; // bus endpoints live on orders app in local setup
 
 // ...existing code...
@@ -501,7 +501,7 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null, extraDa
 
             // If order contains tour items, call tour-service to reserve slots
             if (order && Array.isArray(order.items) && order.items.length) {
-                const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:8080';
+                const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:7700';
                 const BUS_SERVICE = process.env.BUS_SERVICE_BASE || ORDERS_API_BASE; // bus endpoints live on orders app in local setup
                 const snapshot = order.metadata?.bookingDataSnapshot || order.metadata || {};
 
