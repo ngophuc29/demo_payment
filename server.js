@@ -113,8 +113,6 @@ async function issueTicketsForOrder(order) {
         }
     };
 
-
-
     for (const it of order.items || []) {
         const type = String(it.type || '').toLowerCase();
         const productId = it.productId || it.itemId || null;
@@ -208,6 +206,104 @@ async function issueTicketsForOrder(order) {
                     created.push(ticket);
                 } catch (e) {
                     console.error('issueTicketsForOrder: failed to create tour ticket for passenger', i, e.message || e);
+                }
+            }
+        }
+        
+        else if (type === 'flight') {
+            // New flight logic
+            const flights = snapshot.flights || {};
+            const outbound = flights.outbound || {};
+            const inbound = flights.inbound || {};
+            const passengers = Array.isArray(snapshot.details?.passengers) ? snapshot.details.passengers : [];
+            const seats = Array.isArray(snapshot.pricing?.seats) ? snapshot.pricing.seats : [];
+            const pricing = snapshot.pricing || {};
+            const perPax = pricing.perPax || {};
+
+            // Helper to parse date
+            const parseFlightDate = (dateStr) => {
+                if (!dateStr) return null;
+                // Handle formats like "15/01/2025" or "2025-10-17"
+                if (dateStr.includes('/')) {
+                    const [day, month, year] = dateStr.split('/');
+                    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                }
+                return dateStr; // Assume ISO
+            };
+
+            // Group seats by leg
+            const outboundSeats = seats.filter(s => s.leg === 'outbound').map(s => s.id || s.number);
+            const inboundSeats = seats.filter(s => s.leg === 'inbound').map(s => s.id || s.number);
+
+            for (let i = 0; i < passengers.length; i++) {
+                const p = passengers[i] || {};
+                const paxType = p.type || 'adult';
+                let price = 0;
+                if (paxType === 'child') price = Number(perPax.childUnit || 0);
+                else if (paxType === 'infant') price = Number(perPax.infantUnit || 0);
+                else price = Number(perPax.adultUnit || 0);
+                if (!price) price = Math.round(Number(order.total || it.unitPrice || 0) / Math.max(1, passengers.length));
+
+                const passengerName = p.name || [p.title, p.firstName, p.lastName].filter(Boolean).join(' ').trim() || p.firstName || p.lastName || `Pax ${i + 1}`;
+
+                // Outbound ticket
+                if (outbound.flightNumber) {
+                    const travelDate = parseFlightDate(outbound.date);
+                    const seat = outboundSeats[i] || null;
+                    const uniq = `${order.orderNumber || orderIdStr}::flight::${outbound.flightNumber}::outbound::paxIndex:${i}`;
+                    const payload = {
+                        orderId: orderIdStr,
+                        orderNumber: order.orderNumber || null,
+                        type: 'flight',
+                        productId: `${outbound.flightNumber}__${outbound.route}__${outbound.date}__${outbound.time}` || outbound.flightNumber,
+                        passengerIndex: i,
+                        passenger: { name: passengerName, type: paxType, idNumber: p.idNumber || '', dob: p.dateOfBirth || '' },
+                        seats: seat ? [seat] : [],
+                        travelDate: travelDate,
+                        travelStart: outbound.time ? `${travelDate}T${outbound.time.split(' - ')[0]}:00` : null,
+                        travelEnd: outbound.time ? `${travelDate}T${outbound.time.split(' - ')[1]}:00` : null,
+                        price,
+                        currency: snapshot.meta?.currency || 'VND',
+                        reservationInfo: snapshot,
+                        uniq
+                    };
+
+                    try {
+                        const ticket = await postTicket(payload);
+                        created.push(ticket);
+                    } catch (e) {
+                        console.error('issueTicketsForOrder: failed to create flight outbound ticket for passenger', i, e.message || e);
+                    }
+                }
+
+                // Inbound ticket
+                if (inbound.flightNumber) {
+                    const travelDate = parseFlightDate(inbound.date);
+                    const seat = inboundSeats[i] || null;
+                    const uniq = `${order.orderNumber || orderIdStr}::flight::${inbound.flightNumber}::inbound::paxIndex:${i}`;
+                    const payload = {
+                        orderId: orderIdStr,
+                        orderNumber: order.orderNumber || null,
+                        type: 'flight',
+                        productId: `${inbound.flightNumber}_${inbound.route}_${inbound.date}_${inbound.time}` || inbound.flightNumber,
+                        passengerIndex: i,
+                        passenger: { name: passengerName, type: paxType, idNumber: p.idNumber || '', dob: p.dateOfBirth || '' },
+                        seats: seat ? [seat] : [],
+                        travelDate: travelDate,
+                        travelStart: inbound.time ? `${travelDate}T${inbound.time.split(' - ')[0]}:00` : null,
+                        travelEnd: inbound.time ? `${travelDate}T${inbound.time.split(' - ')[1]}:00` : null,
+                        price,
+                        currency: snapshot.meta?.currency || 'VND',
+                        reservationInfo: snapshot,
+                        uniq
+                    };
+
+                    try {
+                        const ticket = await postTicket(payload);
+                        created.push(ticket);
+                    } catch (e) {
+                        console.error('issueTicketsForOrder: failed to create flight inbound ticket for passenger', i, e.message || e);
+                    }
                 }
             }
         } else {
@@ -346,7 +442,7 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
         }
 
         // 3. Lấy vé cũ từ oldTicketIDs hoặc ticketIds và xử lý qua API
-        const oldTicketIds = originalOrder.oldTicketIDs || originalOrder.ticketIds || [];
+        const oldTicketIds = originalOrder.ticketIds || [];
         const newTickets = [];
 
         for (const ticketId of oldTicketIds) {
@@ -370,7 +466,6 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
                     orderNumber: originalOrder.orderNumber,
                     type: oldTicket.type,
                     productId: oldTicket.productId,
-                    providerReservationId: oldTicket.providerReservationId,
                     passengerIndex: oldTicket.passengerIndex,
                     passenger: oldTicket.passenger,
                     seats: oldTicket.seats, // Giữ seats cũ, hoặc update nếu cần (cho bus: dùng newSeats nếu có)
@@ -422,6 +517,7 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
             ticketIds: newTickets,
             oldTicketIDs: oldTicketIds
         }, { timeout: 5000 });
+
 
         console.log(`Change calendar payment processed for order ${originalOrder.orderNumber}`);
     } catch (err) {
@@ -852,7 +948,7 @@ app.post('/zalo/payment', async (req, res) => {
             amount = 50000,
             description = 'Thanh toán MegaTrip',
             app_user = 'user123',
-            callback_url = 'https://969acadc785e.ngrok-free.app/zalo/callback',
+            callback_url = 'https://8a4869cd41ec.ngrok-free.app/zalo/callback',
             embed_data = {},
             items = [],
             // FE sends orderId (createdOrder.orderNumber or _id)
