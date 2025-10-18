@@ -445,6 +445,17 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
         const oldTicketIds = originalOrder.ticketIds || [];
         const newTickets = [];
 
+        // Lấy newSeats từ meta (cho bus)
+        let newSeats = [];
+        try {
+            const meta = originalOrder.inforChangeCalendar?.data?.meta;
+            if (meta && Array.isArray(meta.selectedSeats)) {
+                newSeats = meta.selectedSeats;
+            }
+        } catch (e) {
+            console.error('Error parsing new seats for bus:', e.message);
+        }
+
         for (const ticketId of oldTicketIds) {
             try {
                 // Lấy thông tin vé cũ qua API
@@ -468,7 +479,7 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
                     productId: oldTicket.productId,
                     passengerIndex: oldTicket.passengerIndex,
                     passenger: oldTicket.passenger,
-                    seats: oldTicket.seats, // Giữ seats cũ, hoặc update nếu cần (cho bus: dùng newSeats nếu có)
+                    seats: [],  // Sẽ update bên dưới
                     travelDate: changeDate, // Dùng changeDate từ inforChangeCalendar
                     travelStart: oldTicket.travelStart,
                     travelEnd: oldTicket.travelEnd,
@@ -480,18 +491,8 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
                     uniq: `${originalOrder.orderNumber}::changed::${Date.now()}`
                 };
 
-                // Nếu là bus, update seats mới (gán từng seat cho từng passenger)
+                // Nếu là bus, gán seats mới từ newSeats
                 if (oldTicket.type === 'bus') {
-                    let newSeats = [];
-                    try {
-                        const meta = originalOrder.inforChangeCalendar?.data?.meta;
-                        if (meta && Array.isArray(meta.selectedSeats)) {
-                            newSeats = meta.selectedSeats;
-                        }
-                    } catch (e) {
-                        console.error('Error parsing new seats for bus:', e.message);
-                    }
-                    // Gán seat cho passenger này
                     const passengerObj = typeof oldTicket.passenger === 'string' ? JSON.parse(oldTicket.passenger) : oldTicket.passenger;
                     const isInfant = passengerObj?.type === 'infant';
                     if (!isInfant && newSeats[oldTicket.passengerIndex] !== undefined) {
@@ -511,6 +512,9 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
                 // Tiếp tục với vé khác nếu có lỗi
             }
         }
+
+
+
 
         // 4. Cập nhật ticketIds trong order gốc qua API
         await axios.patch(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(originalOrder._id || originalOrder.orderNumber)}`, {
@@ -948,15 +952,35 @@ app.post('/zalo/payment', async (req, res) => {
             amount = 50000,
             description = 'Thanh toán MegaTrip',
             app_user = 'user123',
-            callback_url = 'https://8a4869cd41ec.ngrok-free.app/zalo/callback',
+            callback_url = 'https://8d83f07c2177.ngrok-free.app/zalo/callback',
             embed_data = {},
             items = [],
-            // FE sends orderId (createdOrder.orderNumber or _id)
+            redirectUrl,
             orderId
         } = req.body;
 
         // ensure embed_data contains internal order ref
         if (orderId) embed_data.orderNumber = embed_data.orderNumber || orderId;
+
+        // Validation callback_url: Chỉ chấp nhận localhost:7000 hoặc ngrok URL
+        const isValidCallback = callback_url.startsWith('http://localhost:7000') || callback_url.includes('ngrok-free.app');
+        const finalCallbackUrl = isValidCallback ? callback_url : 'https://9c94e17580d1.ngrok-free.app/zalo/callback';
+
+        // Set redirecturl dùng chung với MoMo và thêm orderId + extraData nếu FOR_CHANGE
+        const baseRedirectUrl = redirectUrl || momoConfig.redirectUrl || 'https://your-frontend-domain.com/payment-success';
+        const separator = baseRedirectUrl.includes('?') ? '&' : '?';
+        let redirectParams = `orderId=${encodeURIComponent(orderId)}`;
+
+        // Nếu là FOR_CHANGE, thêm extraData giống MoMo
+        if (orderId && orderId.startsWith('ORD_FORCHANGE_')) {
+            const extraData = JSON.stringify({
+                originalOrder: embed_data.originalOrder || null,
+                changeCode: orderId
+            });
+            redirectParams += `&extraData=${encodeURIComponent(extraData)}`;
+        }
+
+        embed_data.redirecturl = `${baseRedirectUrl}${separator}${redirectParams}`;
 
         // Derive app_trans_id for Zalo:
         // - if orderId starts with 'ORD_' strip that prefix for Zalo
@@ -989,11 +1013,10 @@ app.post('/zalo/payment', async (req, res) => {
             app_user,
             app_time: Date.now(),
             item: JSON.stringify(items || []),
-            embed_data: JSON.stringify(embed_data || { redirecturl: callback_url }),
+            embed_data: JSON.stringify(embed_data),  // embed_data giờ bao gồm redirecturl với orderId
             // amount: Number(amount),
             amount: 10000,
-
-            callback_url,
+            callback_url: finalCallbackUrl,
             description,
         };
 
@@ -1048,12 +1071,13 @@ app.post('/zalo/callback', async (req, res) => {
         const returnCode = Number(dataJson.return_code ?? dataJson.returnCode ?? dataJson.rc ?? 0);
         const serverTime = dataJson.server_time ?? dataJson.serverTime ?? null;
 
-        // parse embed_data if present (may be a JSON string)
         let embeddedOrderNumber = null;
+        let originalOrderFromEmbed = null;
         if (dataJson.embed_data) {
             try {
                 const ed = typeof dataJson.embed_data === 'string' ? JSON.parse(dataJson.embed_data) : dataJson.embed_data;
                 embeddedOrderNumber = ed.orderNumber || ed.orderId || null;
+                originalOrderFromEmbed = ed.originalOrder || null;  // Thêm: Lấy originalOrder từ embed_data
             } catch (e) { /* ignore */ }
         }
 
@@ -1074,8 +1098,8 @@ app.post('/zalo/callback', async (req, res) => {
 
         if (success && orderRef) {
             try {
-                // embed_data đã parse thành embeddedOrderNumber
-                const extraData = { originalOrder: embeddedOrderNumber };
+                // Sửa: extraData.originalOrder nên là originalOrderFromEmbed (order gốc)
+                const extraData = { originalOrder: originalOrderFromEmbed || embeddedOrderNumber };
                 await markOrderPaid(orderRef, 'zalopay', zpTransId, extraData);
                 console.log(`[ZaloPay] markOrderPaid called for ${orderRef} zp_trans_id=${zpTransId}`);
             } catch (e) {
