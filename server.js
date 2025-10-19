@@ -669,7 +669,14 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null, extraDa
 
                     // date: prefer meta.departureDateIso then details.date
                     const dateRaw = snapshot.meta?.departureDateIso ?? snapshot.details?.date ?? snapshot.date;
-                    const dateIso = dateRaw ? new Date(dateRaw).toISOString().split('T')[0] : null;
+                    // Fix: parse dateRaw to get local Y-M-D string, handling both local strings and UTC ISO strings
+                    const dateIso = dateRaw ? (() => {
+                        const d = new Date(dateRaw);
+                        const year = d.getFullYear();
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    })() : null;
 
                     if (!dateIso) {
                         console.warn('markOrderPaid: missing dateIso for bus item', { busId, orderRef });
@@ -765,8 +772,8 @@ app.post('/momo/payment', async (req, res) => {
             autoCapture: autoCaptureCfg,
         } = { ...momoConfig, ...req.body };
 
-        // const amount = String(amtFromClient || req.body.amount || '10000');
-        const amount = '10000'
+        const amount = String(amtFromClient || req.body.amount || '10000');
+        // const amount = '10000'
 
         const partnerCode = partnerCodeFromClient || partnerCodeCfg || momoConfig.partnerCode;
         const accessKey = accessKeyCfg || momoConfig.accessKey;
@@ -952,7 +959,7 @@ app.post('/zalo/payment', async (req, res) => {
             amount = 50000,
             description = 'Thanh toán MegaTrip',
             app_user = 'user123',
-            callback_url = 'https://8d83f07c2177.ngrok-free.app/zalo/callback',
+            callback_url = 'https://752eb2ab1218.ngrok-free.app/zalo/callback',
             embed_data = {},
             items = [],
             redirectUrl,
@@ -964,7 +971,7 @@ app.post('/zalo/payment', async (req, res) => {
 
         // Validation callback_url: Chỉ chấp nhận localhost:7000 hoặc ngrok URL
         const isValidCallback = callback_url.startsWith('http://localhost:7000') || callback_url.includes('ngrok-free.app');
-        const finalCallbackUrl = isValidCallback ? callback_url : 'https://9c94e17580d1.ngrok-free.app/zalo/callback';
+        const finalCallbackUrl = isValidCallback ? callback_url : 'https://752eb2ab1218.ngrok-free.app/zalo/callback';
 
         // Set redirecturl dùng chung với MoMo và thêm orderId + extraData nếu FOR_CHANGE
         const baseRedirectUrl = redirectUrl || momoConfig.redirectUrl || 'https://your-frontend-domain.com/payment-success';
