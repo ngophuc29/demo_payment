@@ -18,7 +18,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 const ORDERS_API_BASE = process.env.ORDERS_API_BASE || 'http://localhost:7700';
 const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:7700';
 const BUS_SERVICE = process.env.BUS_SERVICE_BASE || ORDERS_API_BASE || 'http://localhost:7700'; // bus endpoints live on orders app in local setup
-
+const AUTH_SERVICE = process.env.AUTH_SERVICE || 'http://localhost:7700';
 // ...existing code...
 function toDateIso(v) {
     try { return (new Date(v)).toISOString().split('T')[0]; } catch { return null; }
@@ -122,8 +122,8 @@ async function issueTicketsForOrder(order) {
             const details = snapshot.details || {};
             const seats = Array.isArray(details.seats) ? details.seats : [];
             const paxArr = Array.isArray(details.passengers) ? details.passengers : (details.passengerInfo ? [details.passengerInfo] : []);
-            const travelIso = snapshot.meta?.departureDateIso || details.date || snapshot.date || null;
-            const travelDate = travelIso ? new Date(travelIso).toISOString().split('T')[0] : null;
+            const travelIso = snapshot.meta?.departureDateIso || details.date || snapshot.date;
+            const travelDate = travelIso ? new Date(travelIso).toISOString().split('T')[0] : null;  // Fix: travelIso is now YYYY-MM-DD, so this works correctly
             const pricing = snapshot.pricing || {};
             const perPax = pricing.perPax || {};
             for (let i = 0; i < (paxArr.length || Number(it.quantity || 1)); i++) {
@@ -137,7 +137,7 @@ async function issueTicketsForOrder(order) {
                 if (!price) price = Math.round(Number(order.total || it.unitPrice || 0) / Math.max(1, paxArr.length || Number(it.quantity || 1)));
 
                 const passengerName = p.name || [p.title, p.firstName, p.lastName].filter(Boolean).join(' ').trim() || p.firstName || p.lastName || `Pax ${i + 1}`;
-                const uniq = `${order.orderNumber || orderIdStr}::bus::${productId}::${travelDate || ''}::${seat ? 'seat:' + seat : 'paxIndex:' + i}`;
+                const uniq = `${order.orderNumber || orderIdStr}::bus::${productId}::${travelDate || ''}::seat:${seat ? seat : 'paxIndex:' + i}`;
 
                 const payload = {
                     orderId: orderIdStr,
@@ -148,7 +148,8 @@ async function issueTicketsForOrder(order) {
                     passenger: { name: passengerName, type: paxType, idNumber: p.idNumber || '', dob: p.dateOfBirth || '' },
                     seats: seat ? [seat] : [],
                     travelDate: travelDate,
-                    travelStart: travelIso || null,
+                    travelStart: travelIso && details.time ? `${travelIso}T${details.time.split(' - ')[0]}:00` : null,  // Fix: Use local date + local time
+                    travelEnd: null,
                     price,
                     currency: snapshot.meta?.currency || 'VND',
                     reservationInfo: snapshot,
@@ -167,7 +168,8 @@ async function issueTicketsForOrder(order) {
             const details = snapshot.details || {};
             const paxArr = Array.isArray(details.passengers) ? details.passengers : [];
             const travelIso = details.startDateTime || details.date || snapshot.meta?.startDateTime || null;
-            const travelDate = travelIso ? new Date(travelIso).toISOString().split('T')[0] : (details.date || null);
+            // Fix: travelIso is now local YYYY-MM-DD, so use it directly
+            const travelDate = travelIso;  // Local YYYY-MM-DD
             const pricing = snapshot.pricing || {};
             const perPax = pricing.perPax || {};
             const tourCode = details.tourCode || productId;
@@ -192,9 +194,9 @@ async function issueTicketsForOrder(order) {
                     passengerIndex: i,
                     passenger: { name: passengerName, type: paxType, idNumber: p.idNumber || '', dob: p.dateOfBirth || '' },
                     seats: [],
-                    travelDate: travelDate,
-                    travelStart: travelIso || null,
-                    travelEnd: details.endDateTime || null,
+                    travelDate: travelDate,  // Local YYYY-MM-DD
+                    travelStart: travelIso || null,  // Local YYYY-MM-DD
+                    travelEnd: details.endDateTime || null,  // Local YYYY-MM-DD
                     price,
                     currency: snapshot.meta?.currency || 'VND',
                     reservationInfo: snapshot,
@@ -209,7 +211,7 @@ async function issueTicketsForOrder(order) {
                 }
             }
         }
-        
+
         else if (type === 'flight') {
             // New flight logic
             const flights = snapshot.flights || {};
@@ -324,6 +326,9 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
         const changeCalendarData = originalOrder.inforChangeCalendar || {};
         const changeDate = changeCalendarData.data?.changeDate || new Date().toISOString().split('T')[0];
 
+        console.log('changeCalendarData.data:', changeCalendarData.data); // Log để debug
+        let newProductId = null;
+        let newFlights = null;
         // 1. Cập nhật inforChangeCalendar trong order gốc qua API
         const updatePayload = {
             changeCalendar: true,
@@ -340,6 +345,68 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
 
         // Update order gốc qua API (thay vì save() trên plain object)
         await axios.put(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(originalOrder._id || originalOrder.orderNumber)}`, updatePayload, { timeout: 5000 });
+
+        // 2. Cập nhật metadata, serviceDate, và items cho flight (không cần release/reserve slots)
+        const flightItem = originalOrder.items.find(it => it.type === 'flight');
+        
+        if (flightItem) {
+            // Sửa: Lấy selectedOption từ meta thay vì trực tiếp từ data
+            const newTime = changeCalendarData.data?.meta?.newTime || '00:00 - 00:00';
+            const selectedOption = changeCalendarData.data?.meta?.selectedOption || changeCalendarData.data?.selectedOption || {};
+            const selectedSeats = changeCalendarData.data?.meta?.selectedSeats || []; // Sửa: Lấy từ meta.selectedSeats
+            const newDate = changeCalendarData.data?.newDate || changeCalendarData.data?.changeDate || changeDate;
+
+            console.log('selectedOption:', selectedOption); // Log để debug
+            console.log('newDate:', newDate, 'changeDate:', changeDate); // Log để debug
+
+            // Tạo productId mới dựa trên selectedOption, dùng changeDate cho date để đảm bảo đúng ngày đổi
+            // Tạo newProductId match format vé cũ, dùng newTime từ meta
+            newProductId = selectedOption.flightNumber
+                ? `${selectedOption.flightNumber}__${selectedOption.departure?.airport || 'DEP'} → ${selectedOption.arrival?.airport || 'ARR'}__${changeDate}__${newTime}`
+                : flightItem.productId;
+
+            console.log('newProductId calculated:', newProductId); // Log để debug
+
+            // Tính unitPrice mới từ selectedOption.price
+            const newUnitPrice = selectedOption.price || flightItem.unitPrice || 0;
+
+            // Tạo newFlights object với outbound (để match logic cũ như mapOrderToBooking expect flights.outbound.date), dùng newDate cho date
+            newFlights = {
+                outbound: {
+                    id: selectedOption.raw?.id || selectedOption.id,
+                    flightNumber: selectedOption.flightNumber,
+                    airline: selectedOption.airlineCode || selectedOption.airline,
+                    route: `${selectedOption.departure?.airport || ''} → ${selectedOption.arrival?.airport || ''}`,
+                    date: newDate,  // Dùng newDate thay vì selectedOption.departure?.date || newDate để đảm bảo đúng ngày mới
+                    time: selectedOption.time || `${selectedOption.departure?.time || ''} - ${selectedOption.arrival?.time || ''}`,
+                    itineraries: selectedOption.raw?.itineraries || [],
+                    currency: selectedOption.currency || 'VND'
+                },
+                inbound: null // Giả sử one-way
+            };
+
+            const updateData = {
+                serviceDate: newDate,
+                'metadata.flights': newFlights,  // Sử dụng newFlights object
+                'metadata.pricing.seats': selectedSeats,
+                // Cập nhật snapshot để issueTicketsForOrder dùng data mới
+                'metadata.bookingDataSnapshot.pricing.seats': selectedSeats,
+                'metadata.bookingDataSnapshot.flights': newFlights,  // Sử dụng newFlights object
+                // Update items[0]
+                'items.0.productId': newProductId,
+                'items.0.name': `${selectedOption.airline || 'Unknown'} ${selectedOption.flightNumber || ''} - ${selectedOption.departure?.city || ''} to ${selectedOption.arrival?.city || ''}`.trim() || flightItem.name,
+                'items.0.unitPrice': newUnitPrice,
+                'items.0.subtotal': newUnitPrice * (flightItem.quantity || 1),
+            };
+
+            await axios.put(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(originalOrder._id || originalOrder.orderNumber)}`, updateData, { timeout: 5000 });
+        }
+
+        // Định nghĩa selectedSeats ở đây để dùng cho tất cả types (flight/bus), đảm bảo luôn là array từ meta
+        const selectedSeats = changeCalendarData.data?.meta?.selectedSeats || []; // Sửa: Lấy từ meta.selectedSeats
+        console.log('selectedSeats defined:', selectedSeats); // Log để debug
+
+
 
         // 2. Release slots cho ngày cũ và reserve cho ngày mới (cho Tour và Bus)
         const snapshot = originalOrder.metadata?.bookingDataSnapshot || {};
@@ -392,7 +459,7 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
                 }
 
                 // Seats mới: từ meta (lưu từ bước 2)
-                let newSeats = [];
+                let newSeats = changeCalendarData.data?.meta?.selectedSeats || []; // Sửa: Lấy từ meta.selectedSeats
                 try {
                     const meta = originalOrder.inforChangeCalendar?.data?.meta;
                     if (meta && Array.isArray(meta.selectedSeats)) {
@@ -439,6 +506,7 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
                     }
                 }
             }
+            // Không thêm else if cho flight, vì không cần slots
         }
 
         // 3. Lấy vé cũ từ oldTicketIDs hoặc ticketIds và xử lý qua API
@@ -446,7 +514,7 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
         const newTickets = [];
 
         // Lấy newSeats từ meta (cho bus)
-        let newSeats = [];
+        let newSeats = changeCalendarData.data?.meta?.selectedSeats || []; // Sửa: Lấy từ meta.selectedSeats
         try {
             const meta = originalOrder.inforChangeCalendar?.data?.meta;
             if (meta && Array.isArray(meta.selectedSeats)) {
@@ -476,7 +544,7 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
                     orderId: originalOrder._id,
                     orderNumber: originalOrder.orderNumber,
                     type: oldTicket.type,
-                    productId: oldTicket.productId,
+                    productId: newProductId || oldTicket.productId,  // Dùng newProductId nếu có (cho flight), else old
                     passengerIndex: oldTicket.passengerIndex,
                     passenger: oldTicket.passenger,
                     seats: [],  // Sẽ update bên dưới
@@ -488,9 +556,10 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
                     reservationInfo: oldTicket.reservationInfo,
                     status: 'changed', // Status mới
                     ticketType: oldTicket.ticketType,
-                    uniq: `${originalOrder.orderNumber}::changed::${Date.now()}`
+                    uniq: `${originalOrder.orderNumber}::changed::${Date.now()}_${oldTicket.passengerIndex}`  // Thêm passengerIndex để uniq khác nhau
                 };
 
+                console.log('newTicketPayload.productId before assignment:', newTicketPayload.productId); // Log để debug
                 // Nếu là bus, gán seats mới từ newSeats
                 if (oldTicket.type === 'bus') {
                     const passengerObj = typeof oldTicket.passenger === 'string' ? JSON.parse(oldTicket.passenger) : oldTicket.passenger;
@@ -502,10 +571,33 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
                     }
                 }
 
+                // Nếu là flight, gán seats mới từ selectedSeats
+                if (oldTicket.type === 'flight') {
+                    const passengerObj = typeof oldTicket.passenger === 'string' ? JSON.parse(oldTicket.passenger) : oldTicket.passenger;
+                    const isInfant = passengerObj?.type === 'infant';
+                    console.log('selectedSeats before use:', selectedSeats, 'passengerIndex:', oldTicket.passengerIndex); // Log để debug
+                    if (!isInfant && selectedSeats[oldTicket.passengerIndex] !== undefined) {
+                        newTicketPayload.seats = [selectedSeats[oldTicket.passengerIndex]];
+                    } else {
+                        newTicketPayload.seats = [];  // Infant không có seat
+                    }
+
+                    // Sync reservationInfo với newFlights để khớp với productId
+                    newTicketPayload.reservationInfo = {
+                        ...oldTicket.reservationInfo,
+                        flights: newFlights  // Dùng newFlights (flight mới) thay vì flight cũ
+                    };
+                }
+
+                console.log(`Creating new ticket for passengerIndex ${oldTicket.passengerIndex}, productId: ${newTicketPayload.productId}, seats: ${JSON.stringify(newTicketPayload.seats)}, travelDate: ${newTicketPayload.travelDate}`);  // Log chi tiết hơn
+
                 const newTicketResp = await axios.post(`${TICKET_SERVICE_BASE}/api/tickets`, newTicketPayload, { timeout: 8000 });
                 const newTicket = newTicketResp.data?.ticket || newTicketResp.data;
                 if (newTicket && newTicket._id) {
                     newTickets.push(newTicket._id);
+                    console.log(`Successfully created new ticket for passengerIndex ${oldTicket.passengerIndex}: ${newTicket._id}`);  // Log success
+                } else {
+                    console.error(`Failed to create new ticket for passengerIndex ${oldTicket.passengerIndex}: Invalid response`);  // Log error
                 }
             } catch (err) {
                 console.error('Error processing ticket via API:', ticketId, err.response?.data || err.message);
@@ -513,22 +605,23 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
             }
         }
 
-
-
-
         // 4. Cập nhật ticketIds trong order gốc qua API
         await axios.patch(`${ORDERS_API_BASE}/api/orders/${encodeURIComponent(originalOrder._id || originalOrder.orderNumber)}`, {
             ticketIds: newTickets,
             oldTicketIDs: oldTicketIds
         }, { timeout: 5000 });
 
-
-        console.log(`Change calendar payment processed for order ${originalOrder.orderNumber}`);
+        console.log(`Change calendar payment processed for order ${originalOrder.orderNumber}, new tickets: ${newTickets.length}`);
     } catch (err) {
         console.error('handleChangeCalendarPayment error:', err);
         throw err;
     }
 }
+
+// ...existing code...
+
+
+
 
 
 // xử lý đơn hàng khi call back ,chuyển status thành paid,...
@@ -747,6 +840,69 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null, extraDa
                 }
             }
         }
+
+
+
+        //gửi mail khi trả về callback thanh toán thành công 
+        if (isChangeCalendar) {
+            // Gửi mail đổi lịch
+            try {
+                let extraData = JSON.stringify({
+                    originalOrder: originalOrder.orderNumber,
+                    changeCode: originalOrder.inforChangeCalendar.codeChange,
+                    download: true // Thêm flag download
+                });
+                await axios.post(`${AUTH_SERVICE}/api/auth/send-change-calendar`, {
+                    email: originalOrder.customerEmail,
+                    changeDetails: {
+                        orderNumber: originalOrder.inforChangeCalendar.codeChange,
+                        changeDate: originalOrder.inforChangeCalendar.data.changeDate,
+                        fee: originalOrder.inforChangeCalendar.totalpayforChange,
+                        note: originalOrder.inforChangeCalendar.data.note,
+                        ticketDownloadUrl: `http://localhost:3000/thanh-toan-thanh-cong?orderId=${originalOrder.inforChangeCalendar.codeChange}&extraData=${encodeURIComponent(extraData)}`
+                    }
+                });
+            } catch (e) {
+                console.error('Failed to send change calendar email:', e.message);
+            }
+        } else {
+            // Gửi mail đặt 
+            try {
+                // Xử lý departureDate cho flight
+                let departureDate = 'N/A';
+                if (originalOrder.items[0]?.type === 'flight') {
+                    const flights = originalOrder.metadata?.bookingDataSnapshot?.flights;
+                    if (flights?.outbound && flights?.inbound) {
+                        departureDate = `${flights.outbound.date} - ${flights.inbound.date}`;
+                    } else if (flights?.outbound) {
+                        departureDate = flights.outbound.date;
+                    } else if (flights?.inbound) {
+                        departureDate = flights.inbound.date;
+                    }
+                } else {
+                    departureDate = originalOrder.metadata?.bookingDataSnapshot?.details?.date || 'N/A';
+                }
+
+                let extraData = JSON.stringify({
+                    originalOrder: originalOrder.orderNumber,
+                    download: true // Thêm flag download
+                });
+                await axios.post(`${AUTH_SERVICE}/api/auth/send-booking-success`, {
+                    email: originalOrder.customerEmail,
+                    orderDetails: {
+                        orderNumber: originalOrder.orderNumber,
+                        tourName: originalOrder.items[0]?.name || 'Tour',
+                        departureDate: departureDate,
+                        total: originalOrder.total,
+                        ticketDownloadUrl: `http://localhost:3000/thanh-toan-thanh-cong?orderId=${originalOrder.orderNumber}&extraData=${encodeURIComponent(extraData)}`
+                    }
+                });
+            } catch (e) {
+                console.error('Failed to send booking success email:', e.message);
+            }
+        }
+
+
     } // end if order && items
     catch (err) {
         console.error(`Failed to update order ${orderRef} on ${ORDERS_API_BASE}:`, err.response?.data || err.message);
@@ -959,7 +1115,7 @@ app.post('/zalo/payment', async (req, res) => {
             amount = 50000,
             description = 'Thanh toán MegaTrip',
             app_user = 'user123',
-            callback_url = 'https://752eb2ab1218.ngrok-free.app/zalo/callback',
+            callback_url = 'https://6ca084717429.ngrok-free.app/zalo/callback',
             embed_data = {},
             items = [],
             redirectUrl,
@@ -971,7 +1127,7 @@ app.post('/zalo/payment', async (req, res) => {
 
         // Validation callback_url: Chỉ chấp nhận localhost:7000 hoặc ngrok URL
         const isValidCallback = callback_url.startsWith('http://localhost:7000') || callback_url.includes('ngrok-free.app');
-        const finalCallbackUrl = isValidCallback ? callback_url : 'https://752eb2ab1218.ngrok-free.app/zalo/callback';
+        const finalCallbackUrl = isValidCallback ? callback_url : 'https://6ca084717429.ngrok-free.app/zalo/callback';
 
         // Set redirecturl dùng chung với MoMo và thêm orderId + extraData nếu FOR_CHANGE
         const baseRedirectUrl = redirectUrl || momoConfig.redirectUrl || 'https://your-frontend-domain.com/payment-success';
