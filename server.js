@@ -5,6 +5,7 @@ const cors = require('cors');
 const axios = require('axios');
 const crypto = require('crypto');
 const moment = require('moment');
+const cron = require('node-cron');
 const qs = require('qs');
 const CryptoJS = require('crypto-js');
 const { VNPay, ignoreLogger, ProductCode, VnpLocale, dateFormat } = require('vnpay');
@@ -87,6 +88,7 @@ function seatConsumingCounts(snapshot, it) {
     const seatCount = Math.max(1, adults + children); // infants do NOT consume seats
     return { seatCount, adults, children, infants, paxArr };
 }
+
 async function issueTicketsForOrder(order) {
     if (!order) return [];
     const ORD = process.env.ORDERS_API_BASE || 'http://localhost:7700';
@@ -618,7 +620,7 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
     }
 }
 
-// ...existing code...
+
 
 
 
@@ -908,6 +910,19 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null, extraDa
         console.error(`Failed to update order ${orderRef} on ${ORDERS_API_BASE}:`, err.response?.data || err.message);
     }
 }
+
+app.get('/ping', (req, res) => {
+    console.log('Ping received at', new Date().toISOString());
+    res.status(200).send('Pong - App is awake');
+});
+cron.schedule('*/10 * * * *', () => {
+    console.log('Internal cron: Pinging self at', new Date().toISOString());
+    axios.get('http://localhost:7000/ping').catch(err => console.log('Self-ping failed:', err.message));
+});
+app.get('/', (req, res) => {
+    console.log('Server payment  received at', new Date().toISOString());
+    res.status(200).send('Run Successfully');
+});
 // ========== MoMo API ==========
 app.post('/momo/payment', async (req, res) => {
     console.log('[MoMo] Request body:', req.body);
@@ -1115,7 +1130,7 @@ app.post('/zalo/payment', async (req, res) => {
             amount = 50000,
             description = 'Thanh toán MegaTrip',
             app_user = 'user123',
-            callback_url = 'https://6ca084717429.ngrok-free.app/zalo/callback',
+            callback_url = 'https://82623b6fe674.ngrok-free.app/zalo/callback',
             embed_data = {},
             items = [],
             redirectUrl,
@@ -1127,7 +1142,7 @@ app.post('/zalo/payment', async (req, res) => {
 
         // Validation callback_url: Chỉ chấp nhận localhost:7000 hoặc ngrok URL
         const isValidCallback = callback_url.startsWith('http://localhost:7000') || callback_url.includes('ngrok-free.app');
-        const finalCallbackUrl = isValidCallback ? callback_url : 'https://6ca084717429.ngrok-free.app/zalo/callback';
+        const finalCallbackUrl = isValidCallback ? callback_url : 'https://82623b6fe674.ngrok-free.app/zalo/callback';
 
         // Set redirecturl dùng chung với MoMo và thêm orderId + extraData nếu FOR_CHANGE
         const baseRedirectUrl = redirectUrl || momoConfig.redirectUrl || 'https://your-frontend-domain.com/payment-success';
