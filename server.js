@@ -917,7 +917,7 @@ app.get('/ping', (req, res) => {
 });
 cron.schedule('*/10 * * * *', () => {
     console.log('Internal cron: Pinging self at', new Date().toISOString());
-    axios.get('http://localhost:7000/ping').catch(err => console.log('Self-ping failed:', err.message));
+    axios.get('https://demo-payment-nc15.onrender.com/ping').catch(err => console.log('Self-ping failed:', err.message));
 });
 app.get('/', (req, res) => {
     console.log('Server payment  received at', new Date().toISOString());
