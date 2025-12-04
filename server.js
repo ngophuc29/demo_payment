@@ -16,10 +16,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-const ORDERS_API_BASE = process.env.ORDERS_API_BASE || 'http://localhost:7700';
-const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:7700';
-const BUS_SERVICE = process.env.BUS_SERVICE_BASE || ORDERS_API_BASE || 'http://localhost:7700'; // bus endpoints live on orders app in local setup
-const AUTH_SERVICE = process.env.AUTH_SERVICE || 'http://localhost:7700';
+const ORDERS_API_BASE = process.env.ORDERS_API_BASE || 'https://megatripserver.onrender.com';
+const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'https://megatripserver.onrender.com';
+const BUS_SERVICE = process.env.BUS_SERVICE_BASE || ORDERS_API_BASE || 'https://megatripserver.onrender.com'; // bus endpoints live on orders app in local setup
+const AUTH_SERVICE = process.env.AUTH_SERVICE || 'https://megatripserver.onrender.com';
 // ...existing code...
 function toDateIso(v) {
     try { return (new Date(v)).toISOString().split('T')[0]; } catch { return null; }
@@ -91,7 +91,7 @@ function seatConsumingCounts(snapshot, it) {
 
 async function issueTicketsForOrder(order) {
     if (!order) return [];
-    const ORD = process.env.ORDERS_API_BASE || 'http://localhost:7700';
+    const ORD = process.env.ORDERS_API_BASE || 'https://megatripserver.onrender.com';
     const snapshot = order.metadata?.bookingDataSnapshot || order.metadata || {};
     const created = [];
 
@@ -319,7 +319,7 @@ async function issueTicketsForOrder(order) {
     console.log('issueTicketsForOrder: created tickets count', created.length);
     return created;
 }
-const TICKET_SERVICE_BASE = process.env.TICKET_SERVICE_BASE || 'http://localhost:7700';
+const TICKET_SERVICE_BASE = process.env.TICKET_SERVICE_BASE || 'https://megatripserver.onrender.com';
 
 // xử cho đổi vé
 async function handleChangeCalendarPayment(originalOrder, method, txnId) {
@@ -350,7 +350,7 @@ async function handleChangeCalendarPayment(originalOrder, method, txnId) {
 
         // 2. Cập nhật metadata, serviceDate, và items cho flight (không cần release/reserve slots)
         const flightItem = originalOrder.items.find(it => it.type === 'flight');
-        
+
         if (flightItem) {
             // Sửa: Lấy selectedOption từ meta thay vì trực tiếp từ data
             const newTime = changeCalendarData.data?.meta?.newTime || '00:00 - 00:00';
@@ -696,7 +696,7 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null, extraDa
 
             // If order contains tour items, call tour-service to reserve slots
             if (order && Array.isArray(order.items) && order.items.length) {
-                const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'http://localhost:7700';
+                const TOUR_SERVICE = process.env.TOUR_SERVICE_BASE || 'https://megatripserver.onrender.com';
                 const BUS_SERVICE = process.env.BUS_SERVICE_BASE || ORDERS_API_BASE; // bus endpoints live on orders app in local setup
                 const snapshot = order.metadata?.bookingDataSnapshot || order.metadata || {};
 
@@ -861,7 +861,7 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null, extraDa
                         changeDate: originalOrder.inforChangeCalendar.data.changeDate,
                         fee: originalOrder.inforChangeCalendar.totalpayforChange,
                         note: originalOrder.inforChangeCalendar.data.note,
-                        ticketDownloadUrl: `http://localhost:3000/thanh-toan-thanh-cong?orderId=${originalOrder.inforChangeCalendar.codeChange}&extraData=${encodeURIComponent(extraData)}`
+                        ticketDownloadUrl: `https://mega-trip-eewz.vercel.app/thanh-toan-thanh-cong?orderId=${originalOrder.inforChangeCalendar.codeChange}&extraData=${encodeURIComponent(extraData)}`
                     }
                 });
             } catch (e) {
@@ -896,7 +896,7 @@ async function markOrderPaid(orderRef, method = 'unknown', txnId = null, extraDa
                         tourName: originalOrder.items[0]?.name || 'Tour',
                         departureDate: departureDate,
                         total: originalOrder.total,
-                        ticketDownloadUrl: `http://localhost:3000/thanh-toan-thanh-cong?orderId=${originalOrder.orderNumber}&extraData=${encodeURIComponent(extraData)}`
+                        ticketDownloadUrl: `https://mega-trip-eewz.vercel.app/thanh-toan-thanh-cong?orderId=${originalOrder.orderNumber}&extraData=${encodeURIComponent(extraData)}`
                     }
                 });
             } catch (e) {
@@ -915,10 +915,10 @@ app.get('/ping', (req, res) => {
     console.log('Ping received at', new Date().toISOString());
     res.status(200).send('Pong - App is awake');
 });
-cron.schedule('*/10 * * * *', () => {
-    console.log('Internal cron: Pinging self at', new Date().toISOString());
-    axios.get('https://demo-payment-nc15.onrender.com/ping').catch(err => console.log('Self-ping failed:', err.message));
-});
+// cron.schedule('*/10 * * * *', () => {
+//     console.log('Internal cron: Pinging self at', new Date().toISOString());
+//     axios.get('https://demo-payment-nc15.onrender.com/ping').catch(err => console.log('Self-ping failed:', err.message));
+// });
 app.get('/', (req, res) => {
     console.log('Server payment  received at', new Date().toISOString());
     res.status(200).send('Run Successfully');
@@ -951,7 +951,7 @@ app.post('/momo/payment', async (req, res) => {
         const secretKey = secretKeyCfg || momoConfig.secretKey;
         const orderInfo = orderInfoFromClient || 'Thanh toán';
         const redirectUrl = redirectUrlFromClient || momoConfig.redirectUrl;
-        const ipnUrl = ipnUrlFromClient || momoConfig.ipnUrl || 'http://localhost:3000/thanh-toan-thanh-cong';
+        const ipnUrl = ipnUrlFromClient || momoConfig.ipnUrl || 'https://mega-trip-eewz.vercel.app/thanh-toan-thanh-cong';
         const extraData = extraDataFromClient || '';
         const requestType = requestTypeFromClient || requestTypeFromClient || momoConfig.requestType || 'payWithMethod';
         const requestId = (req.body.requestId) ? String(req.body.requestId) : `${partnerCode}${Date.now()}`;
@@ -1130,7 +1130,7 @@ app.post('/zalo/payment', async (req, res) => {
             amount = 50000,
             description = 'Thanh toán MegaTrip',
             app_user = 'user123',
-            callback_url = 'https://82623b6fe674.ngrok-free.app/zalo/callback',
+            callback_url = 'https://demo-payment-nc15.onrender.com/zalo/callback',
             embed_data = {},
             items = [],
             redirectUrl,
@@ -1140,12 +1140,12 @@ app.post('/zalo/payment', async (req, res) => {
         // ensure embed_data contains internal order ref
         if (orderId) embed_data.orderNumber = embed_data.orderNumber || orderId;
 
-        // Validation callback_url: Chỉ chấp nhận localhost:7000 hoặc ngrok URL
-        const isValidCallback = callback_url.startsWith('http://localhost:7000') || callback_url.includes('ngrok-free.app');
-        const finalCallbackUrl = isValidCallback ? callback_url : 'https://82623b6fe674.ngrok-free.app/zalo/callback';
+        // Validation callback_url: Chỉ chấp nhận localhost:7000 hoặc ngrok URL hoặc https://demo-payment-nc15.onrender.com
+        const isValidCallback = callback_url.startsWith('https://demo-payment-nc15.onrender.com') || callback_url.includes('ngrok-free.app');
+        const finalCallbackUrl = isValidCallback ? callback_url : 'https://demo-payment-nc15.onrender.com/zalo/callback';
 
         // Set redirecturl dùng chung với MoMo và thêm orderId + extraData nếu FOR_CHANGE
-        const baseRedirectUrl = redirectUrl || momoConfig.redirectUrl || 'https://your-frontend-domain.com/payment-success';
+        const baseRedirectUrl = redirectUrl || momoConfig.redirectUrl || 'https://mega-trip-eewz.vercel.app/payment-success';
         const separator = baseRedirectUrl.includes('?') ? '&' : '?';
         let redirectParams = `orderId=${encodeURIComponent(orderId)}`;
 
@@ -1192,8 +1192,8 @@ app.post('/zalo/payment', async (req, res) => {
             app_time: Date.now(),
             item: JSON.stringify(items || []),
             embed_data: JSON.stringify(embed_data),  // embed_data giờ bao gồm redirecturl với orderId
-            // amount: Number(amount),
-            amount: 10000,
+            amount: Number(amount),
+            // amount: 10000,
             callback_url: finalCallbackUrl,
             description,
         };
