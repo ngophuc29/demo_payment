@@ -915,10 +915,10 @@ app.get('/ping', (req, res) => {
     console.log('Ping received at', new Date().toISOString());
     res.status(200).send('Pong - App is awake');
 });
-// cron.schedule('*/10 * * * *', () => {
-//     console.log('Internal cron: Pinging self at', new Date().toISOString());
-//     axios.get('https://demo-payment-nc15.onrender.com/ping').catch(err => console.log('Self-ping failed:', err.message));
-// });
+cron.schedule('*/10 * * * *', () => {
+    console.log('Internal cron: Pinging self at', new Date().toISOString());
+    axios.get('https://demo-payment-nc15.onrender.com/ping').catch(err => console.log('Self-ping failed:', err.message));
+});
 app.get('/', (req, res) => {
     console.log('Server payment  received at', new Date().toISOString());
     res.status(200).send('Run Successfully');
